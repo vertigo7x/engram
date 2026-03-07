@@ -32,6 +32,7 @@ import (
 	"github.com/Gentleman-Programming/engram/internal/cloud/autosync"
 	"github.com/Gentleman-Programming/engram/internal/cloud/cloudserver"
 	"github.com/Gentleman-Programming/engram/internal/cloud/cloudstore"
+	"github.com/Gentleman-Programming/engram/internal/cloud/dashboard"
 	"github.com/Gentleman-Programming/engram/internal/cloud/remote"
 	"github.com/Gentleman-Programming/engram/internal/mcp"
 	"github.com/Gentleman-Programming/engram/internal/server"
@@ -94,10 +95,12 @@ var (
 	autosyncDefaultCg = autosync.DefaultConfig
 
 	// Cloud test seams
-	cloudStoreNew      = cloudstore.New
-	cloudStoreClose    = func(cs *cloudstore.CloudStore) error { return cs.Close() }
-	cloudAuthNew       = auth.NewService
-	cloudServerNew     = cloudserver.New
+	cloudStoreNew   = cloudstore.New
+	cloudStoreClose = func(cs *cloudstore.CloudStore) error { return cs.Close() }
+	cloudAuthNew    = auth.NewService
+	cloudServerNew  = func(cs *cloudstore.CloudStore, svc *auth.Service, port int, opts ...cloudserver.Option) *cloudserver.CloudServer {
+		return cloudserver.New(cs, svc, port, opts...)
+	}
 	cloudServerStart   = func(srv *cloudserver.CloudServer) error { return srv.Start() }
 	remoteTransportNew = remote.NewRemoteTransport
 	cloudHTTPClient    = func() *http.Client { return http.DefaultClient }
@@ -1147,7 +1150,10 @@ func cmdCloudServe() {
 		return
 	}
 
-	srv := cloudServerNew(cs, authSvc, cloudCfg.Port)
+	dashCfg := dashboard.DashboardConfig{
+		AdminEmail: cloudCfg.AdminEmail,
+	}
+	srv := cloudServerNew(cs, authSvc, cloudCfg.Port, cloudserver.WithDashboard(dashCfg))
 	if err := cloudServerStart(srv); err != nil {
 		fatal(err)
 		return

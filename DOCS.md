@@ -27,13 +27,14 @@ Engram Go Binary
 SQLite + FTS5 (~/.engram/engram.db)
 ```
 
-Five interfaces:
+Six interfaces:
 
 1. **CLI** — Direct terminal usage (`engram search`, `engram save`, etc.)
 2. **HTTP API** — REST API on port 7437 for plugins and integrations
 3. **MCP Server** — stdio transport for any MCP-compatible agent
 4. **TUI** — Interactive terminal UI for browsing memories (`engram tui`)
 5. **Cloud Server** — Postgres-backed HTTP API for multi-device sync (`engram cloud serve`)
+6. **Cloud Dashboard** — Server-rendered web UI for browsing knowledge in the browser (`/dashboard/`)
 
 ---
 
@@ -60,6 +61,15 @@ engram/
 │   │   │   ├── cloudserver.go      # Route registration, health, auth, search, context
 │   │   │   ├── middleware.go       # JWT/API key auth middleware
 │   │   │   └── push_pull.go        # Chunk + mutation push/pull handlers
+│   │   ├── dashboard/              # Embedded web dashboard (templ + htmx, zero JS build)
+│   │   │   ├── dashboard.go        # Mount(), handlers, admin guard
+│   │   │   ├── middleware.go       # Cookie-based auth (JWT in HTTP-only cookie)
+│   │   │   ├── config.go           # DashboardConfig (AdminEmail)
+│   │   │   ├── helpers.go          # Truncation, badge variant helpers
+│   │   │   ├── embed.go            # go:embed static assets (htmx, CSS)
+│   │   │   ├── *.templ             # templ templates (login, layout, components)
+│   │   │   ├── *_templ.go          # Generated Go from templ (checked in)
+│   │   │   └── static/             # htmx.min.js, pico.min.css, styles.css
 │   │   ├── autosync/               # Background auto-sync manager
 │   │   │   └── manager.go          # Lease-guarded push/pull worker with backoff
 │   │   └── remote/                 # Remote sync transport (HTTP client)
@@ -743,6 +753,28 @@ services:
 | `GET` | `/sync/search` | Yes | Full-text search (`?q=QUERY&type=&project=&scope=&limit=`) |
 | `GET` | `/sync/context` | Yes | Formatted context (`?project=&scope=`) |
 
+**Dashboard Routes** (browser, served from `engram cloud serve`):
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/dashboard/health` | No | Dashboard health check (`{"status":"ok","subsystem":"dashboard"}`) |
+| `GET` | `/dashboard/login` | No | Login page (HTML form) |
+| `POST` | `/dashboard/login` | No | Submit login (sets `engram_session` cookie) |
+| `POST` | `/dashboard/logout` | No | Clear session cookie, redirect to login |
+| `GET` | `/dashboard/static/*` | No | Embedded static assets (htmx.min.js, CSS) |
+| `GET` | `/dashboard/` | Cookie | Dashboard overview (project stats, enrolled projects) |
+| `GET` | `/dashboard/stats` | Cookie | Project stats partial (htmx) |
+| `GET` | `/dashboard/browser` | Cookie | Knowledge browser (observations, sessions, prompts) |
+| `GET` | `/dashboard/browser/observations` | Cookie | Observations partial (htmx, `?project=&q=`) |
+| `GET` | `/dashboard/browser/sessions` | Cookie | Sessions partial (htmx, `?project=`) |
+| `GET` | `/dashboard/browser/prompts` | Cookie | Prompts partial (htmx, `?project=&q=`) |
+| `GET` | `/dashboard/projects` | Cookie | Projects list with stats |
+| `GET` | `/dashboard/projects/{name}` | Cookie | Project detail (sessions, observations, prompts) |
+| `GET` | `/dashboard/contributors` | Cookie | Contributors list with per-user stats |
+| `GET` | `/dashboard/admin` | Cookie+Admin | Admin overview (system health, user count) |
+| `GET` | `/dashboard/admin/users` | Cookie+Admin | User management (list all users, API key status) |
+| `GET` | `/dashboard/admin/health` | Cookie+Admin | System health detail (DB version, table counts) |
+
 **Security Notes**:
 - `ENGRAM_JWT_SECRET` must be at least 32 characters. Use a cryptographically random string in production.
 - The cloud server does NOT use HTTPS by default. In production, put it behind your normal reverse proxy, ingress, or load balancer with TLS termination.
@@ -758,6 +790,53 @@ services:
 - `cloud_prompts` — BIGSERIAL PK, user-scoped, tsvector GENERATED STORED for FTS
 - `cloud_chunks` — raw chunk BYTEA storage, composite PK (user_id, chunk_id)
 - `cloud_sync_chunks` — tracks which chunks have been synced per user
+
+---
+
+### 10. Cloud Dashboard
+
+A server-rendered web UI embedded in the `engram cloud serve` binary. Provides browser-based access to organizational knowledge, project health, contributor stats, and admin controls. Built with **templ** (Go HTML templates) + **htmx** (partial page updates), zero JS build step. Ships as part of the single binary — no separate frontend deployment.
+
+**Access**: Navigate to `http://<cloud-server>/dashboard/` in a browser. Log in with the same credentials used for `engram cloud register`/`engram cloud login`.
+
+**Architecture**:
+- Cookie-based sessions: Login wraps the JWT access token in an HTTP-only, Secure, SameSite=Lax cookie (`engram_session`). Existing API auth (Bearer header / API key) is unaffected.
+- All templates compiled to Go via `templ generate` (checked into repo). Static assets embedded via `go:embed`.
+- Dashboard package (`internal/cloud/dashboard/`) receives `CloudStore` and `auth.Service` as dependencies. Mounted on the existing `CloudServer.mux` via `dashboard.Mount()`.
+
+**Tabs**:
+- **Dashboard** — Project enrollment overview with per-project session/observation/prompt counts. Stats loaded via htmx on page load.
+- **Browser** — Knowledge browser with project filter and search. Three sub-views: Observations, Sessions, Prompts. All loaded as htmx partials.
+- **Projects** — Project cards with stats. Click through to project detail (recent sessions, observations, prompts).
+- **Contributors** — Per-user stats table (session count, observation count, last sync time).
+- **Admin** (visible only to admin) — System health, user management, DB diagnostics.
+
+**Admin Configuration**:
+```bash
+# Set the admin email — this user sees the Admin tab
+export ENGRAM_CLOUD_ADMIN="admin@example.com"
+engram cloud serve
+```
+
+The admin guard checks the authenticated user's email (or username as fallback) against `ENGRAM_CLOUD_ADMIN`. Non-admin users get a 403 Forbidden page.
+
+**Quick Start**:
+```bash
+# 1. Start Postgres + cloud server (same as cloud sync setup)
+docker compose up -d
+export ENGRAM_DATABASE_URL="postgres://engram:engram_dev@localhost:5433/engram_cloud?sslmode=disable"
+export ENGRAM_JWT_SECRET="your-secret-at-least-32-characters-long"
+export ENGRAM_CLOUD_ADMIN="admin@example.com"
+engram cloud serve
+
+# 2. Open browser
+open http://localhost:8080/dashboard/
+
+# 3. Log in with your cloud credentials
+# (same username/email + password used with 'engram cloud register')
+```
+
+**Theme**: Dark theme using Pico CSS (classless) with custom CSS variables. Fully responsive.
 
 ---
 
@@ -852,6 +931,7 @@ After `go install`: `$GOPATH/bin/engram` (typically `~/go/bin/engram`)
 9. **Cloud Sync via Postgres** — Optional centralized sync with row-level user isolation. Postgres tsvector for full-text search (weighted: title > content > type/project).
 10. **Local-first auto-sync** — SQLite stays authoritative. A mutation journal (`sync_mutations`) records every write as an append-only log. Long-lived processes run a lease-guarded background manager that pushes/pulls mutations automatically. Cloud failures degrade gracefully (exponential backoff with jitter) — local reads and writes are never blocked. Legacy chunk-based sync preserved with `--legacy` flag for backward compatibility.
 11. **Project-scoped sync** — Enrollment-based filtering lets developers choose which projects sync to the cloud. A denormalized `project` column on `sync_mutations` enables SQL-level filtering at push time (no in-memory filtering). Non-enrolled mutations are skip-acked to prevent journal bloat. Empty-project mutations always sync. All filtering is client-side — the cloud server requires zero changes.
+12. **Embedded web dashboard (templ + htmx)** — Server-rendered HTML shipped inside the Go binary via `go:embed`. No separate frontend build, no Node.js, no bundler. templ compiles to Go at development time; htmx handles partial page updates. Cookie-based browser sessions wrap the existing JWT infrastructure. Admin access gated by a single `ENGRAM_CLOUD_ADMIN` env var.
 
 ---
 
@@ -865,4 +945,4 @@ Key differences from claude-mem:
 - Go binary (not Node.js/TypeScript)
 - FTS5 instead of ChromaDB
 - Agent-driven compression instead of separate LLM calls
-- Simpler architecture (single binary, no web UI)
+- Simpler architecture (single binary, embedded web dashboard)

@@ -721,7 +721,7 @@ func TestCmdCloudServeHappyPath(t *testing.T) {
 		gotSecret = jwtSecret
 		return &auth.Service{}, nil
 	}
-	cloudServerNew = func(cs *cloudstore.CloudStore, svc *auth.Service, port int) *cloudserver.CloudServer {
+	cloudServerNew = func(cs *cloudstore.CloudStore, svc *auth.Service, port int, opts ...cloudserver.Option) *cloudserver.CloudServer {
 		gotPort = port
 		return &cloudserver.CloudServer{}
 	}

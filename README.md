@@ -662,10 +662,23 @@ Sync memories across machines via a Postgres-backed cloud server. **Auto-sync is
 - Manual one-off sync: `engram cloud sync` (push + pull, then exit)
 - Check sync health: `engram cloud sync-status` (pending mutations, degraded state)
 - Project-scoped sync: `engram cloud enroll <project>` to choose which projects sync to the cloud
+- **Web Dashboard**: Browse knowledge, projects, and contributor stats in the browser at `/dashboard/`
 - Legacy chunk-based sync: `engram cloud sync --legacy` (deprecated, preserved for backward compatibility)
 - Client contract stays simple: one reachable base URL + one token
 
-See `DOCS.md` for the full cloud workflow, security notes, and local two-machine testing guidance.
+See `DOCS.md` for the full cloud workflow, dashboard setup, security notes, and local two-machine testing guidance.
+
+### Cloud Dashboard
+
+A server-rendered web UI embedded in `engram cloud serve`. Navigate to `http://<server>/dashboard/` and log in with your cloud credentials.
+
+- **Dashboard** — Project enrollment overview with stats
+- **Browser** — Search and browse observations, sessions, prompts
+- **Projects** — Per-project detail views with session timelines
+- **Contributors** — Per-developer stats and sync activity
+- **Admin** — System health, user management (requires `ENGRAM_CLOUD_ADMIN` env var)
+
+Built with templ + htmx — zero JS build step, ships inside the single binary.
 
 ## CLI
 
@@ -829,6 +842,7 @@ engram/
 │   │   ├── autosync/manager.go     # Background auto-sync manager (lease + backoff)
 │   │   ├── cloudstore/             # Postgres storage (schema, CRUD, mutations)
 │   │   ├── cloudserver/            # Cloud HTTP API (auth, push/pull, mutations)
+│   │   ├── dashboard/              # Embedded web dashboard (templ + htmx)
 │   │   └── remote/transport.go     # HTTP client for cloud sync
 │   └── tui/                        # Bubbletea terminal UI
 │       ├── model.go                # Screen constants, Model, Init()
