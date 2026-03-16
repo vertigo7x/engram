@@ -1,0 +1,9 @@
+.git
+.github
+.engram
+assets
+plugin
+skills
+cmd/engram/main
+cmd/engram/gentle-creation
+*.md

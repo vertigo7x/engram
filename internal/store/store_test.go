@@ -1910,12 +1910,12 @@ func TestNewErrorBranches(t *testing.T) {
 			);
 		`)
 		if err != nil {
-			_ = db.Close()
 			t.Fatalf("create conflicting view: %v", err)
 		}
 		if err := db.Close(); err != nil {
 			t.Fatalf("close db: %v", err)
 		}
+		time.Sleep(25 * time.Millisecond)
 
 		cfg := mustDefaultConfig(t)
 		cfg.DataDir = dataDir

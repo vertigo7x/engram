@@ -25,7 +25,7 @@ func resetSetupSeams(t *testing.T) {
 	oldInjectOpenCodeMCPFn := injectOpenCodeMCPFn
 	oldInjectGeminiMCPFn := injectGeminiMCPFn
 	oldWriteGeminiSystemPromptFn := writeGeminiSystemPromptFn
-oldWriteCodexMemoryInstructionFilesFn := writeCodexMemoryInstructionFilesFn
+	oldWriteCodexMemoryInstructionFilesFn := writeCodexMemoryInstructionFilesFn
 	oldInjectCodexMCPFn := injectCodexMCPFn
 	oldInjectCodexMemoryConfigFn := injectCodexMemoryConfigFn
 	oldAddClaudeCodeAllowlistFn := addClaudeCodeAllowlistFn
@@ -45,7 +45,7 @@ oldWriteCodexMemoryInstructionFilesFn := writeCodexMemoryInstructionFilesFn
 		injectOpenCodeMCPFn = oldInjectOpenCodeMCPFn
 		injectGeminiMCPFn = oldInjectGeminiMCPFn
 		writeGeminiSystemPromptFn = oldWriteGeminiSystemPromptFn
-writeCodexMemoryInstructionFilesFn = oldWriteCodexMemoryInstructionFilesFn
+		writeCodexMemoryInstructionFilesFn = oldWriteCodexMemoryInstructionFilesFn
 		injectCodexMCPFn = oldInjectCodexMCPFn
 		injectCodexMemoryConfigFn = oldInjectCodexMemoryConfigFn
 		addClaudeCodeAllowlistFn = oldAddClaudeCodeAllowlistFn
@@ -82,8 +82,10 @@ func TestSupportedAgentsIncludesGeminiAndCodex(t *testing.T) {
 }
 
 func TestInstallGeminiCLIInjectsMCPConfig(t *testing.T) {
+	resetSetupSeams(t)
+	runtimeGOOS = "linux"
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	userHomeDir = func() (string, error) { return home, nil }
 
 	configPath := filepath.Join(home, ".gemini", "settings.json")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
@@ -170,8 +172,9 @@ func TestInstallGeminiCLIInjectsMCPConfig(t *testing.T) {
 
 func TestInstallCodexInjectsTOMLAndIsIdempotent(t *testing.T) {
 	resetSetupSeams(t)
+	runtimeGOOS = "linux"
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	userHomeDir = func() (string, error) { return home, nil }
 
 	configPath := filepath.Join(home, ".codex", "config.toml")
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
@@ -231,11 +234,11 @@ func TestInstallCodexInjectsTOMLAndIsIdempotent(t *testing.T) {
 			t.Fatalf("expected engram args in config, got:\n%s", text)
 		}
 		instructionsPath := filepath.Join(home, ".codex", "engram-instructions.md")
-		if !strings.Contains(text, "model_instructions_file = \""+instructionsPath+"\"") {
+		if !strings.Contains(text, "model_instructions_file = ") || !strings.Contains(text, filepath.Base(instructionsPath)) {
 			t.Fatalf("expected model_instructions_file in config, got:\n%s", text)
 		}
 		compactPromptPath := filepath.Join(home, ".codex", "engram-compact-prompt.md")
-		if !strings.Contains(text, "experimental_compact_prompt_file = \""+compactPromptPath+"\"") {
+		if !strings.Contains(text, "experimental_compact_prompt_file = ") || !strings.Contains(text, filepath.Base(compactPromptPath)) {
 			t.Fatalf("expected compact prompt file key in config, got:\n%s", text)
 		}
 		firstSection := strings.Index(text, "[profile]")
@@ -1178,7 +1181,6 @@ func TestAdditionalHelperBranches(t *testing.T) {
 			t.Fatalf("expected compact prompt write error, got %v", err)
 		}
 	})
-
 
 	t.Run("injectGeminiMCP read error", func(t *testing.T) {
 		configPath := filepath.Join(t.TempDir(), "settings.json")

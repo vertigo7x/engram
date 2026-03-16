@@ -24,14 +24,14 @@
 
 Your AI coding agent forgets everything when the session ends. Engram gives it a brain.
 
-A **Go binary** with SQLite + FTS5 full-text search, exposed via CLI, HTTP API, MCP server, and an interactive TUI. Works with **any agent** that supports MCP — Claude Code, OpenCode, Gemini CLI, Codex, VS Code (Copilot), Antigravity, Cursor, Windsurf, or anything else.
+A **Go binary** with relational storage (SQLite by default, PostgreSQL optional), exposed via CLI, HTTP API, MCP server, and an interactive TUI. Works with **any agent** that supports MCP — Claude Code, OpenCode, Gemini CLI, Codex, VS Code (Copilot), Antigravity, Cursor, Windsurf, or anything else.
 
 ```
 Agent (Claude Code / OpenCode / Gemini CLI / Codex / VS Code / Antigravity / ...)
     ↓ MCP stdio
-Engram (single Go binary)
+Engram (single Go binary or container)
     ↓
-SQLite + FTS5 (~/.engram/engram.db)
+Relational DB (SQLite default / PostgreSQL optional)
 ```
 
 ## Quick Start
@@ -138,7 +138,7 @@ engram setup
 
 See [Agent Setup](#agent-setup) for manual configuration or other agents (VS Code, Antigravity, Cursor, Windsurf).
 
-That's it. No Node.js, no Python, no Bun, no Docker, no ChromaDB, no vector database, no worker processes. **One binary, one SQLite file.**
+That's it. No Node.js, no Python, no Bun, no ChromaDB, no vector database, no worker processes. **One binary, optional container deployment.**
 
 ## How It Works
 
@@ -654,6 +654,40 @@ engram sync --project other-name
 
 **Auto-import**: The OpenCode plugin automatically runs `engram sync --import` when it detects `.engram/manifest.json` in the project directory. Clone a repo, open OpenCode, and the team's memories are loaded.
 
+## Deploy as Service
+
+If you want shared memory for a development team, you can run Engram as an always-on service.
+
+### Docker
+
+```bash
+docker build -t engram:local .
+
+# SQLite mode (local volume)
+docker run --rm -p 7437:7437 -v engram-data:/data engram:local
+
+# PostgreSQL mode
+docker run --rm -p 7437:7437 \
+  -e ENGRAM_DB_DRIVER=postgres \
+  -e ENGRAM_DATABASE_URL="postgres://user:pass@postgres:5432/engram?sslmode=disable" \
+  engram:local
+```
+
+### Kubernetes (Helm)
+
+Chart path: `charts/engram`
+
+```bash
+helm install engram ./charts/engram
+
+# PostgreSQL example
+helm install engram ./charts/engram \
+  --set database.driver=postgres \
+  --set database.url="postgres://user:pass@postgres:5432/engram?sslmode=disable"
+```
+
+By design, there is currently no built-in auth layer; deploy it in a trusted internal network only.
+
 ## CLI
 
 ```
@@ -829,13 +863,16 @@ engram/
 - **Go 1.25+** to build from source (not needed if installing via Homebrew or downloading a binary)
 - That's it. No runtime dependencies.
 
-The binary includes SQLite (via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — pure Go, no CGO). Works natively on **macOS**, **Linux**, and **Windows** (x86_64 and ARM64).
+The binary includes SQLite (via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — pure Go, no CGO) and also supports PostgreSQL through `github.com/lib/pq`. Works natively on **macOS**, **Linux**, and **Windows** (x86_64 and ARM64).
 
 ## Environment Variables
 
 | Variable | Description | Default |
 |---|---|---|
 | `ENGRAM_DATA_DIR` | Data directory | `~/.engram` (Windows: `%USERPROFILE%\.engram`) |
+| `ENGRAM_DB_DRIVER` | Database driver (`sqlite` or `postgres`) | `sqlite` |
+| `ENGRAM_DATABASE_URL` | PostgreSQL connection URL (required when driver is `postgres`) | empty |
+| `ENGRAM_HOST` | HTTP bind host | `127.0.0.1` |
 | `ENGRAM_PORT` | HTTP server port | `7437` |
 
 ### Windows Config Paths

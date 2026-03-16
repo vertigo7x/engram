@@ -1,7 +1,8 @@
 // Package store implements the persistent memory engine for Engram.
 //
-// It uses SQLite with FTS5 full-text search to store and retrieve
-// observations from AI coding sessions. This is the core of Engram —
+// It uses relational storage (SQLite by default, PostgreSQL optional)
+// to store and retrieve observations from AI coding sessions.
+// This is the core of Engram —
 // everything else (HTTP server, MCP server, CLI, plugins) talks to this.
 package store
 
@@ -19,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	_ "github.com/lib/pq"
 	_ "modernc.org/sqlite"
 )
 
@@ -239,6 +241,8 @@ type ExportData struct {
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 type Config struct {
+	Driver               string
+	DatabaseURL          string
 	DataDir              string
 	MaxObservationLength int
 	MaxContextResults    int
@@ -252,6 +256,8 @@ func DefaultConfig() (Config, error) {
 		return Config{}, fmt.Errorf("engram: determine home directory: %w", err)
 	}
 	return Config{
+		Driver:               "sqlite",
+		DatabaseURL:          "",
 		DataDir:              filepath.Join(home, ".engram"),
 		MaxObservationLength: 50000,
 		MaxContextResults:    20,
@@ -265,6 +271,8 @@ func DefaultConfig() (Config, error) {
 // through alternative means.
 func FallbackConfig(dataDir string) Config {
 	return Config{
+		Driver:               "sqlite",
+		DatabaseURL:          "",
 		DataDir:              dataDir,
 		MaxObservationLength: 50000,
 		MaxContextResults:    20,
@@ -281,9 +289,10 @@ func (s *Store) MaxObservationLength() int {
 // ─── Store ───────────────────────────────────────────────────────────────────
 
 type Store struct {
-	db    *sql.DB
-	cfg   Config
-	hooks storeHooks
+	db     *sql.DB
+	cfg    Config
+	hooks  storeHooks
+	driver string
 }
 
 type execer interface {
@@ -292,6 +301,10 @@ type execer interface {
 
 type queryer interface {
 	Query(query string, args ...any) (*sql.Rows, error)
+}
+
+type rowQueryer interface {
+	QueryRow(query string, args ...any) *sql.Row
 }
 
 type rowScanner interface {
@@ -322,11 +335,12 @@ func (r sqlRowScanner) Close() error {
 }
 
 type storeHooks struct {
-	exec    func(db execer, query string, args ...any) (sql.Result, error)
-	query   func(db queryer, query string, args ...any) (*sql.Rows, error)
-	queryIt func(db queryer, query string, args ...any) (rowScanner, error)
-	beginTx func(db *sql.DB) (*sql.Tx, error)
-	commit  func(tx *sql.Tx) error
+	exec     func(db execer, query string, args ...any) (sql.Result, error)
+	query    func(db queryer, query string, args ...any) (*sql.Rows, error)
+	queryRow func(db rowQueryer, query string, args ...any) *sql.Row
+	queryIt  func(db queryer, query string, args ...any) (rowScanner, error)
+	beginTx  func(db *sql.DB) (*sql.Tx, error)
+	commit   func(tx *sql.Tx) error
 }
 
 func defaultStoreHooks() storeHooks {
@@ -336,6 +350,9 @@ func defaultStoreHooks() storeHooks {
 		},
 		query: func(db queryer, query string, args ...any) (*sql.Rows, error) {
 			return db.Query(query, args...)
+		},
+		queryRow: func(db rowQueryer, query string, args ...any) *sql.Row {
+			return db.QueryRow(query, args...)
 		},
 		queryIt: func(db queryer, query string, args ...any) (rowScanner, error) {
 			rows, err := db.Query(query, args...)
@@ -354,6 +371,7 @@ func defaultStoreHooks() storeHooks {
 }
 
 func (s *Store) execHook(db execer, query string, args ...any) (sql.Result, error) {
+	query = s.rebind(query)
 	if s.hooks.exec != nil {
 		return s.hooks.exec(db, query, args...)
 	}
@@ -361,15 +379,24 @@ func (s *Store) execHook(db execer, query string, args ...any) (sql.Result, erro
 }
 
 func (s *Store) queryHook(db queryer, query string, args ...any) (*sql.Rows, error) {
+	query = s.rebind(query)
 	if s.hooks.query != nil {
 		return s.hooks.query(db, query, args...)
 	}
 	return db.Query(query, args...)
 }
 
+func (s *Store) queryRowHook(db rowQueryer, query string, args ...any) *sql.Row {
+	query = s.rebind(query)
+	if s.hooks.queryRow != nil {
+		return s.hooks.queryRow(db, query, args...)
+	}
+	return db.QueryRow(query, args...)
+}
+
 func (s *Store) queryItHook(db queryer, query string, args ...any) (rowScanner, error) {
 	if s.hooks.queryIt != nil {
-		return s.hooks.queryIt(db, query, args...)
+		return s.hooks.queryIt(db, s.rebind(query), args...)
 	}
 	rows, err := s.queryHook(db, query, args...)
 	if err != nil {
@@ -392,38 +419,97 @@ func (s *Store) commitHook(tx *sql.Tx) error {
 	return tx.Commit()
 }
 
-func New(cfg Config) (*Store, error) {
-	if !filepath.IsAbs(cfg.DataDir) {
-		return nil, fmt.Errorf("engram: data directory must be an absolute path, got %q — set ENGRAM_DATA_DIR or ensure your home directory is resolvable", cfg.DataDir)
-	}
-	if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
-		return nil, fmt.Errorf("engram: create data dir: %w", err)
+func (s *Store) isPostgres() bool {
+	return s.driver == "postgres"
+}
+
+func (s *Store) rebind(query string) string {
+	if !s.isPostgres() {
+		return query
 	}
 
-	dbPath := filepath.Join(cfg.DataDir, "engram.db")
-	db, err := openDB("sqlite", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("engram: open database: %w", err)
+	q := strings.ReplaceAll(query, "ifnull(", "coalesce(")
+	q = strings.ReplaceAll(q, "datetime('now')", "CURRENT_TIMESTAMP")
+
+	trimmed := strings.TrimSpace(strings.ToUpper(q))
+	if strings.HasPrefix(trimmed, "INSERT OR IGNORE INTO") {
+		q = strings.Replace(q, "INSERT OR IGNORE INTO", "INSERT INTO", 1)
+		q = q + " ON CONFLICT DO NOTHING"
 	}
 
-	// SQLite performance pragmas
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA foreign_keys = ON",
-	}
-	for _, p := range pragmas {
-		if _, err := db.Exec(p); err != nil {
-			return nil, fmt.Errorf("engram: pragma %q: %w", p, err)
+	var b strings.Builder
+	b.Grow(len(q) + 8)
+	index := 1
+	for _, ch := range q {
+		if ch == '?' {
+			b.WriteString("$")
+			b.WriteString(strconv.Itoa(index))
+			index++
+			continue
 		}
+		b.WriteRune(ch)
+	}
+	return b.String()
+}
+
+func New(cfg Config) (*Store, error) {
+	driver := strings.TrimSpace(strings.ToLower(cfg.Driver))
+	if driver == "" {
+		driver = "sqlite"
 	}
 
-	s := &Store{db: db, cfg: cfg, hooks: defaultStoreHooks()}
+	var (
+		db  *sql.DB
+		err error
+	)
+
+	switch driver {
+	case "sqlite":
+		if !filepath.IsAbs(cfg.DataDir) {
+			return nil, fmt.Errorf("engram: data directory must be an absolute path, got %q — set ENGRAM_DATA_DIR or ensure your home directory is resolvable", cfg.DataDir)
+		}
+		if err := os.MkdirAll(cfg.DataDir, 0755); err != nil {
+			return nil, fmt.Errorf("engram: create data dir: %w", err)
+		}
+
+		dbPath := filepath.Join(cfg.DataDir, "engram.db")
+		db, err = openDB("sqlite", dbPath)
+		if err != nil {
+			return nil, fmt.Errorf("engram: open database: %w", err)
+		}
+
+		pragmas := []string{
+			"PRAGMA journal_mode = WAL",
+			"PRAGMA busy_timeout = 5000",
+			"PRAGMA synchronous = NORMAL",
+			"PRAGMA foreign_keys = ON",
+		}
+		for _, p := range pragmas {
+			if _, err := db.Exec(p); err != nil {
+				_ = db.Close()
+				return nil, fmt.Errorf("engram: pragma %q: %w", p, err)
+			}
+		}
+	case "postgres", "postgresql":
+		driver = "postgres"
+		if strings.TrimSpace(cfg.DatabaseURL) == "" {
+			return nil, fmt.Errorf("engram: ENGRAM_DATABASE_URL is required when ENGRAM_DB_DRIVER=postgres")
+		}
+		db, err = openDB("postgres", cfg.DatabaseURL)
+		if err != nil {
+			return nil, fmt.Errorf("engram: open postgres database: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("engram: unsupported database driver %q", cfg.Driver)
+	}
+
+	s := &Store{db: db, cfg: cfg, hooks: defaultStoreHooks(), driver: driver}
 	if err := s.migrate(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("engram: migration: %w", err)
 	}
 	if err := s.repairEnrolledProjectSyncMutations(); err != nil {
+		_ = db.Close()
 		return nil, fmt.Errorf("engram: repair enrolled sync journal: %w", err)
 	}
 
@@ -437,6 +523,10 @@ func (s *Store) Close() error {
 // ─── Migrations ──────────────────────────────────────────────────────────────
 
 func (s *Store) migrate() error {
+	if s.isPostgres() {
+		return s.migratePostgres()
+	}
+
 	schema := `
 			CREATE TABLE IF NOT EXISTS sessions (
 				id         TEXT PRIMARY KEY,
@@ -634,7 +724,7 @@ func (s *Store) migrate() error {
 
 	// Create triggers to keep FTS in sync (idempotent check)
 	var name string
-	err := s.db.QueryRow(
+	err := s.queryRowHook(s.db,
 		"SELECT name FROM sqlite_master WHERE type='trigger' AND name='obs_fts_insert'",
 	).Scan(&name)
 
@@ -664,7 +754,7 @@ func (s *Store) migrate() error {
 
 	// Prompts FTS triggers (separate idempotent check)
 	var promptTrigger string
-	err = s.db.QueryRow(
+	err = s.queryRowHook(s.db,
 		"SELECT name FROM sqlite_master WHERE type='trigger' AND name='prompt_fts_insert'",
 	).Scan(&promptTrigger)
 
@@ -690,6 +780,143 @@ func (s *Store) migrate() error {
 		if _, err := s.execHook(s.db, promptTriggers); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+func (s *Store) migratePostgres() error {
+	schema := `
+		CREATE TABLE IF NOT EXISTS sessions (
+			id         TEXT PRIMARY KEY,
+			project    TEXT NOT NULL,
+			directory  TEXT NOT NULL,
+			started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			ended_at   TEXT,
+			summary    TEXT
+		);
+
+		CREATE TABLE IF NOT EXISTS observations (
+			id              BIGSERIAL PRIMARY KEY,
+			sync_id         TEXT,
+			session_id      TEXT NOT NULL,
+			type            TEXT NOT NULL,
+			title           TEXT NOT NULL,
+			content         TEXT NOT NULL,
+			tool_name       TEXT,
+			project         TEXT,
+			scope           TEXT NOT NULL DEFAULT 'project',
+			topic_key       TEXT,
+			normalized_hash TEXT,
+			revision_count  INTEGER NOT NULL DEFAULT 1,
+			duplicate_count INTEGER NOT NULL DEFAULT 1,
+			last_seen_at    TEXT,
+			created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			updated_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			deleted_at      TEXT,
+			FOREIGN KEY (session_id) REFERENCES sessions(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS user_prompts (
+			id         BIGSERIAL PRIMARY KEY,
+			sync_id    TEXT,
+			session_id TEXT NOT NULL,
+			content    TEXT NOT NULL,
+			project    TEXT,
+			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (session_id) REFERENCES sessions(id)
+		);
+
+		CREATE TABLE IF NOT EXISTS sync_chunks (
+			chunk_id    TEXT PRIMARY KEY,
+			imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS sync_state (
+			target_key           TEXT PRIMARY KEY,
+			lifecycle            TEXT NOT NULL DEFAULT 'idle',
+			last_enqueued_seq    BIGINT NOT NULL DEFAULT 0,
+			last_acked_seq       BIGINT NOT NULL DEFAULT 0,
+			last_pulled_seq      BIGINT NOT NULL DEFAULT 0,
+			consecutive_failures INTEGER NOT NULL DEFAULT 0,
+			backoff_until        TEXT,
+			lease_owner          TEXT,
+			lease_until          TEXT,
+			last_error           TEXT,
+			updated_at           TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE TABLE IF NOT EXISTS sync_mutations (
+			seq         BIGSERIAL PRIMARY KEY,
+			target_key  TEXT NOT NULL,
+			entity      TEXT NOT NULL,
+			entity_key  TEXT NOT NULL,
+			op          TEXT NOT NULL,
+			payload     TEXT NOT NULL,
+			source      TEXT NOT NULL DEFAULT 'local',
+			project     TEXT NOT NULL DEFAULT '',
+			occurred_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+			acked_at    TEXT,
+			FOREIGN KEY (target_key) REFERENCES sync_state(target_key)
+		);
+
+		CREATE TABLE IF NOT EXISTS sync_enrolled_projects (
+			project     TEXT PRIMARY KEY,
+			enrolled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+		);
+
+		CREATE INDEX IF NOT EXISTS idx_obs_session  ON observations(session_id);
+		CREATE INDEX IF NOT EXISTS idx_obs_type     ON observations(type);
+		CREATE INDEX IF NOT EXISTS idx_obs_project  ON observations(project);
+		CREATE INDEX IF NOT EXISTS idx_obs_created  ON observations(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_obs_scope    ON observations(scope);
+		CREATE INDEX IF NOT EXISTS idx_obs_sync_id  ON observations(sync_id);
+		CREATE INDEX IF NOT EXISTS idx_obs_topic    ON observations(topic_key, project, scope, updated_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_obs_deleted  ON observations(deleted_at);
+		CREATE INDEX IF NOT EXISTS idx_obs_dedupe   ON observations(normalized_hash, project, scope, type, title, created_at DESC);
+
+		CREATE INDEX IF NOT EXISTS idx_prompts_session ON user_prompts(session_id);
+		CREATE INDEX IF NOT EXISTS idx_prompts_project ON user_prompts(project);
+		CREATE INDEX IF NOT EXISTS idx_prompts_created ON user_prompts(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_prompts_sync_id ON user_prompts(sync_id);
+
+		CREATE INDEX IF NOT EXISTS idx_sync_mutations_target_seq ON sync_mutations(target_key, seq);
+		CREATE INDEX IF NOT EXISTS idx_sync_mutations_pending ON sync_mutations(target_key, acked_at, seq);
+		CREATE INDEX IF NOT EXISTS idx_sync_mutations_project ON sync_mutations(project);
+	`
+	if _, err := s.execHook(s.db, schema); err != nil {
+		return err
+	}
+
+	if _, err := s.execHook(s.db, `UPDATE observations SET scope = 'project' WHERE scope IS NULL OR scope = ''`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE observations SET topic_key = NULL WHERE topic_key = ''`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE observations SET revision_count = 1 WHERE revision_count IS NULL OR revision_count < 1`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE observations SET duplicate_count = 1 WHERE duplicate_count IS NULL OR duplicate_count < 1`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE observations SET updated_at = created_at WHERE updated_at IS NULL OR updated_at = ''`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE observations SET sync_id = 'obs-' || md5(random()::text || clock_timestamp()::text || id::text) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE user_prompts SET project = '' WHERE project IS NULL`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE user_prompts SET sync_id = 'prompt-' || md5(random()::text || clock_timestamp()::text || id::text) WHERE sync_id IS NULL OR sync_id = ''`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `UPDATE sync_mutations SET project = coalesce(payload::json->>'project', '') WHERE project = '' AND payload != ''`); err != nil {
+		return err
+	}
+	if _, err := s.execHook(s.db, `INSERT INTO sync_state (target_key, lifecycle, updated_at) VALUES ('cloud', 'idle', CURRENT_TIMESTAMP) ON CONFLICT (target_key) DO NOTHING`); err != nil {
+		return err
 	}
 
 	return nil
@@ -730,7 +957,7 @@ func (s *Store) EndSession(id string, summary string) error {
 		var endedAt string
 		var project, directory string
 		var storedSummary *string
-		if err := tx.QueryRow(
+		if err := s.queryRowHook(tx,
 			`SELECT project, directory, ended_at, summary FROM sessions WHERE id = ?`,
 			id,
 		).Scan(&project, &directory, &endedAt, &storedSummary); err != nil {
@@ -748,7 +975,7 @@ func (s *Store) EndSession(id string, summary string) error {
 }
 
 func (s *Store) GetSession(id string) (*Session, error) {
-	row := s.db.QueryRow(
+	row := s.queryRowHook(s.db,
 		`SELECT id, project, directory, started_at, ended_at, summary FROM sessions WHERE id = ?`, id,
 	)
 	var sess Session
@@ -901,15 +1128,25 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 	err := s.withTx(func(tx *sql.Tx) error {
 		var obs *Observation
 		if topicKey != "" {
-			var existingID int64
-			err := tx.QueryRow(
-				`SELECT id FROM observations
+			topicQuery := `SELECT id FROM observations
 				 WHERE topic_key = ?
 				   AND ifnull(project, '') = ifnull(?, '')
 				   AND scope = ?
 				   AND deleted_at IS NULL
 				 ORDER BY datetime(updated_at) DESC, datetime(created_at) DESC
-				 LIMIT 1`,
+				 LIMIT 1`
+			if s.isPostgres() {
+				topicQuery = `SELECT id FROM observations
+				 WHERE topic_key = ?
+				   AND coalesce(project, '') = coalesce(?, '')
+				   AND scope = ?
+				   AND deleted_at IS NULL
+				 ORDER BY updated_at DESC, created_at DESC
+				 LIMIT 1`
+			}
+			var existingID int64
+			err := s.queryRowHook(tx,
+				topicQuery,
 				topicKey, nullableString(p.Project), scope,
 			).Scan(&existingID)
 			if err == nil {
@@ -947,10 +1184,8 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 			}
 		}
 
-		window := dedupeWindowExpression(s.cfg.DedupeWindow)
-		var existingID int64
-		err := tx.QueryRow(
-			`SELECT id FROM observations
+		windowStart := time.Now().UTC().Add(-s.cfg.DedupeWindow).Format("2006-01-02 15:04:05")
+		dedupeQuery := `SELECT id FROM observations
 			 WHERE normalized_hash = ?
 			   AND ifnull(project, '') = ifnull(?, '')
 			   AND scope = ?
@@ -959,8 +1194,25 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 			   AND deleted_at IS NULL
 			   AND datetime(created_at) >= datetime('now', ?)
 			 ORDER BY created_at DESC
-			 LIMIT 1`,
-			normHash, nullableString(p.Project), scope, p.Type, title, window,
+			 LIMIT 1`
+		args := []any{normHash, nullableString(p.Project), scope, p.Type, title, dedupeWindowExpression(s.cfg.DedupeWindow)}
+		if s.isPostgres() {
+			dedupeQuery = `SELECT id FROM observations
+			 WHERE normalized_hash = ?
+			   AND coalesce(project, '') = coalesce(?, '')
+			   AND scope = ?
+			   AND type = ?
+			   AND title = ?
+			   AND deleted_at IS NULL
+			   AND created_at >= ?
+			 ORDER BY created_at DESC
+			 LIMIT 1`
+			args = []any{normHash, nullableString(p.Project), scope, p.Type, title, windowStart}
+		}
+		var existingID int64
+		err := s.queryRowHook(tx,
+			dedupeQuery,
+			args...,
 		).Scan(&existingID)
 		if err == nil {
 			if _, err := s.execHook(tx,
@@ -985,18 +1237,30 @@ func (s *Store) AddObservation(p AddObservationParams) (int64, error) {
 		}
 
 		syncID := newSyncID("obs")
-		res, err := s.execHook(tx,
-			`INSERT INTO observations (sync_id, session_id, type, title, content, tool_name, project, scope, topic_key, normalized_hash, revision_count, duplicate_count, last_seen_at, updated_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, datetime('now'), datetime('now'))`,
-			syncID, p.SessionID, p.Type, title, content,
-			nullableString(p.ToolName), nullableString(p.Project), scope, nullableString(topicKey), normHash,
-		)
-		if err != nil {
-			return err
-		}
-		observationID, err = res.LastInsertId()
-		if err != nil {
-			return err
+		if s.isPostgres() {
+			if err := s.queryRowHook(tx,
+				`INSERT INTO observations (sync_id, session_id, type, title, content, tool_name, project, scope, topic_key, normalized_hash, revision_count, duplicate_count, last_seen_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+				 RETURNING id`,
+				syncID, p.SessionID, p.Type, title, content,
+				nullableString(p.ToolName), nullableString(p.Project), scope, nullableString(topicKey), normHash,
+			).Scan(&observationID); err != nil {
+				return err
+			}
+		} else {
+			res, err := s.execHook(tx,
+				`INSERT INTO observations (sync_id, session_id, type, title, content, tool_name, project, scope, topic_key, normalized_hash, revision_count, duplicate_count, last_seen_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, datetime('now'), datetime('now'))`,
+				syncID, p.SessionID, p.Type, title, content,
+				nullableString(p.ToolName), nullableString(p.Project), scope, nullableString(topicKey), normHash,
+			)
+			if err != nil {
+				return err
+			}
+			observationID, err = res.LastInsertId()
+			if err != nil {
+				return err
+			}
 		}
 		obs, err = s.getObservationTx(tx, observationID)
 		if err != nil {
@@ -1049,16 +1313,25 @@ func (s *Store) AddPrompt(p AddPromptParams) (int64, error) {
 	var promptID int64
 	err := s.withTx(func(tx *sql.Tx) error {
 		syncID := newSyncID("prompt")
-		res, err := s.execHook(tx,
-			`INSERT INTO user_prompts (sync_id, session_id, content, project) VALUES (?, ?, ?, ?)`,
-			syncID, p.SessionID, content, nullableString(p.Project),
-		)
-		if err != nil {
-			return err
-		}
-		promptID, err = res.LastInsertId()
-		if err != nil {
-			return err
+		if s.isPostgres() {
+			if err := s.queryRowHook(tx,
+				`INSERT INTO user_prompts (sync_id, session_id, content, project) VALUES (?, ?, ?, ?) RETURNING id`,
+				syncID, p.SessionID, content, nullableString(p.Project),
+			).Scan(&promptID); err != nil {
+				return err
+			}
+		} else {
+			res, err := s.execHook(tx,
+				`INSERT INTO user_prompts (sync_id, session_id, content, project) VALUES (?, ?, ?, ?)`,
+				syncID, p.SessionID, content, nullableString(p.Project),
+			)
+			if err != nil {
+				return err
+			}
+			promptID, err = res.LastInsertId()
+			if err != nil {
+				return err
+			}
 		}
 		return s.enqueueSyncMutationTx(tx, SyncEntityPrompt, syncID, SyncOpUpsert, syncPromptPayload{
 			SyncID:    syncID,
@@ -1111,6 +1384,39 @@ func (s *Store) SearchPrompts(query string, project string, limit int) ([]Prompt
 		limit = 10
 	}
 
+	if s.isPostgres() {
+		sql := `
+			SELECT p.id, coalesce(p.sync_id, '') as sync_id, p.session_id, p.content, coalesce(p.project, '') as project, p.created_at
+			FROM user_prompts p
+			WHERE p.content ILIKE ?
+		`
+		args := []any{"%" + query + "%"}
+
+		if project != "" {
+			sql += " AND p.project = ?"
+			args = append(args, project)
+		}
+
+		sql += " ORDER BY p.created_at DESC LIMIT ?"
+		args = append(args, limit)
+
+		rows, err := s.queryItHook(s.db, sql, args...)
+		if err != nil {
+			return nil, fmt.Errorf("search prompts: %w", err)
+		}
+		defer rows.Close()
+
+		var results []Prompt
+		for rows.Next() {
+			var p Prompt
+			if err := rows.Scan(&p.ID, &p.SyncID, &p.SessionID, &p.Content, &p.Project, &p.CreatedAt); err != nil {
+				return nil, err
+			}
+			results = append(results, p)
+		}
+		return results, rows.Err()
+	}
+
 	ftsQuery := sanitizeFTS(query)
 
 	sql := `
@@ -1149,7 +1455,7 @@ func (s *Store) SearchPrompts(query string, project string, limit int) ([]Prompt
 // ─── Get Single Observation ──────────────────────────────────────────────────
 
 func (s *Store) GetObservation(id int64) (*Observation, error) {
-	row := s.db.QueryRow(
+	row := s.queryRowHook(s.db,
 		`SELECT id, ifnull(sync_id, '') as sync_id, session_id, type, title, content, tool_name, project,
 		        scope, topic_key, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at
 		 FROM observations WHERE id = ? AND deleted_at IS NULL`, id,
@@ -1263,7 +1569,7 @@ func (s *Store) DeleteObservation(id int64, hardDelete bool) error {
 			); err != nil {
 				return err
 			}
-			if err := tx.QueryRow(`SELECT deleted_at FROM observations WHERE id = ?`, id).Scan(&deletedAt); err != nil {
+			if err := s.queryRowHook(tx, `SELECT deleted_at FROM observations WHERE id = ?`, id).Scan(&deletedAt); err != nil {
 				return err
 			}
 		}
@@ -1372,7 +1678,7 @@ func (s *Store) Timeline(observationID int64, before, after int) (*TimelineResul
 
 	// 5. Count total observations in the session for context
 	var totalInRange int
-	s.db.QueryRow(
+	s.queryRowHook(s.db,
 		"SELECT COUNT(*) FROM observations WHERE session_id = ? AND deleted_at IS NULL", focus.SessionID,
 	).Scan(&totalInRange)
 
@@ -1394,6 +1700,58 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 	}
 	if limit > s.cfg.MaxSearchResults {
 		limit = s.cfg.MaxSearchResults
+	}
+
+	if s.isPostgres() {
+		sql := `
+			SELECT o.id, coalesce(o.sync_id, '') as sync_id, o.session_id, o.type, o.title, o.content, o.tool_name, o.project,
+			       o.scope, o.topic_key, o.revision_count, o.duplicate_count, o.last_seen_at, o.created_at, o.updated_at, o.deleted_at,
+			       0.0 as rank
+			FROM observations o
+			WHERE o.deleted_at IS NULL
+			  AND (o.title ILIKE ? OR o.content ILIKE ?)
+		`
+		like := "%" + query + "%"
+		args := []any{like, like}
+
+		if opts.Type != "" {
+			sql += " AND o.type = ?"
+			args = append(args, opts.Type)
+		}
+
+		if opts.Project != "" {
+			sql += " AND o.project = ?"
+			args = append(args, opts.Project)
+		}
+
+		if opts.Scope != "" {
+			sql += " AND o.scope = ?"
+			args = append(args, normalizeScope(opts.Scope))
+		}
+
+		sql += " ORDER BY o.created_at DESC LIMIT ?"
+		args = append(args, limit)
+
+		rows, err := s.queryItHook(s.db, sql, args...)
+		if err != nil {
+			return nil, fmt.Errorf("search: %w", err)
+		}
+		defer rows.Close()
+
+		var results []SearchResult
+		for rows.Next() {
+			var sr SearchResult
+			if err := rows.Scan(
+				&sr.ID, &sr.SyncID, &sr.SessionID, &sr.Type, &sr.Title, &sr.Content,
+				&sr.ToolName, &sr.Project, &sr.Scope, &sr.TopicKey, &sr.RevisionCount, &sr.DuplicateCount,
+				&sr.LastSeenAt, &sr.CreatedAt, &sr.UpdatedAt, &sr.DeletedAt,
+				&sr.Rank,
+			); err != nil {
+				return nil, err
+			}
+			results = append(results, sr)
+		}
+		return results, rows.Err()
 	}
 
 	// Sanitize query for FTS5 — wrap each term in quotes to avoid syntax errors
@@ -1454,9 +1812,9 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 func (s *Store) Stats() (*Stats, error) {
 	stats := &Stats{}
 
-	s.db.QueryRow("SELECT COUNT(*) FROM sessions").Scan(&stats.TotalSessions)
-	s.db.QueryRow("SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL").Scan(&stats.TotalObservations)
-	s.db.QueryRow("SELECT COUNT(*) FROM user_prompts").Scan(&stats.TotalPrompts)
+	s.queryRowHook(s.db, "SELECT COUNT(*) FROM sessions").Scan(&stats.TotalSessions)
+	s.queryRowHook(s.db, "SELECT COUNT(*) FROM observations WHERE deleted_at IS NULL").Scan(&stats.TotalObservations)
+	s.queryRowHook(s.db, "SELECT COUNT(*) FROM user_prompts").Scan(&stats.TotalPrompts)
 
 	rows, err := s.queryItHook(s.db, "SELECT project FROM observations WHERE project IS NOT NULL AND deleted_at IS NULL GROUP BY project ORDER BY MAX(created_at) DESC")
 	if err != nil {
@@ -1836,7 +2194,7 @@ func (s *Store) AckSyncMutationSeqs(targetKey string, seqs []int64) error {
 			}
 		}
 		var remaining int
-		if err := tx.QueryRow(`SELECT COUNT(*) FROM sync_mutations WHERE target_key = ? AND acked_at IS NULL`, targetKey).Scan(&remaining); err != nil {
+		if err := s.queryRowHook(tx, `SELECT COUNT(*) FROM sync_mutations WHERE target_key = ? AND acked_at IS NULL`, targetKey).Scan(&remaining); err != nil {
 			return err
 		}
 		lifecycle := SyncLifecyclePending
@@ -1985,7 +2343,7 @@ func (s *Store) ApplyPulledMutation(targetKey string, mutation SyncMutation) err
 }
 
 func (s *Store) GetObservationBySyncID(syncID string) (*Observation, error) {
-	row := s.db.QueryRow(
+	row := s.queryRowHook(s.db,
 		`SELECT id, ifnull(sync_id, '') as sync_id, session_id, type, title, content, tool_name, project,
 		        scope, topic_key, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at
 		 FROM observations WHERE sync_id = ? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`,
@@ -2062,7 +2420,7 @@ func (s *Store) ListEnrolledProjects() ([]EnrolledProject, error) {
 // IsProjectEnrolled returns true if the given project is enrolled for cloud sync.
 func (s *Store) IsProjectEnrolled(project string) (bool, error) {
 	var exists int
-	err := s.db.QueryRow(
+	err := s.queryRowHook(s.db,
 		`SELECT 1 FROM sync_enrolled_projects WHERE project = ? LIMIT 1`,
 		project,
 	).Scan(&exists)
@@ -2091,7 +2449,7 @@ func (s *Store) MigrateProject(oldName, newName string) (*MigrateResult, error) 
 
 	// Check if old project has any records (short-circuit on first match)
 	var exists bool
-	err := s.db.QueryRow(
+	err := s.queryRowHook(s.db,
 		`SELECT EXISTS(
 			SELECT 1 FROM observations WHERE project = ?
 			UNION ALL
@@ -2172,7 +2530,7 @@ func (s *Store) ensureSyncState(targetKey string) error {
 }
 
 func (s *Store) getSyncState(targetKey string) (*SyncState, error) {
-	row := s.db.QueryRow(`
+	row := s.queryRowHook(s.db, `
 		SELECT target_key, lifecycle, last_enqueued_seq, last_acked_seq, last_pulled_seq,
 		       consecutive_failures, backoff_until, lease_owner, lease_until, last_error, updated_at
 		FROM sync_state WHERE target_key = ?`, targetKey)
@@ -2190,7 +2548,7 @@ func (s *Store) getSyncStateTx(tx *sql.Tx, targetKey string) (*SyncState, error)
 	); err != nil {
 		return nil, err
 	}
-	row := tx.QueryRow(`
+	row := s.queryRowHook(tx, `
 		SELECT target_key, lifecycle, last_enqueued_seq, last_acked_seq, last_pulled_seq,
 		       consecutive_failures, backoff_until, lease_owner, lease_until, last_error, updated_at
 		FROM sync_state WHERE target_key = ?`, targetKey)
@@ -2354,17 +2712,28 @@ func (s *Store) enqueueSyncMutationTx(tx *sql.Tx, entity, entityKey, op string, 
 	); err != nil {
 		return err
 	}
-	res, err := s.execHook(tx,
-		`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project)
-		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		DefaultSyncTargetKey, entity, entityKey, op, string(encoded), SyncSourceLocal, project,
-	)
-	if err != nil {
-		return err
-	}
-	seq, err := res.LastInsertId()
-	if err != nil {
-		return err
+	var seq int64
+	if s.isPostgres() {
+		if err := s.queryRowHook(tx,
+			`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project)
+			 VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING seq`,
+			DefaultSyncTargetKey, entity, entityKey, op, string(encoded), SyncSourceLocal, project,
+		).Scan(&seq); err != nil {
+			return err
+		}
+	} else {
+		res, err := s.execHook(tx,
+			`INSERT INTO sync_mutations (target_key, entity, entity_key, op, payload, source, project)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			DefaultSyncTargetKey, entity, entityKey, op, string(encoded), SyncSourceLocal, project,
+		)
+		if err != nil {
+			return err
+		}
+		seq, err = res.LastInsertId()
+		if err != nil {
+			return err
+		}
 	}
 	_, err = s.execHook(tx,
 		`UPDATE sync_state
@@ -2424,7 +2793,7 @@ func decodeSyncPayload(payload []byte, dest any) error {
 }
 
 func (s *Store) getObservationTx(tx *sql.Tx, id int64) (*Observation, error) {
-	row := tx.QueryRow(
+	row := s.queryRowHook(tx,
 		`SELECT id, ifnull(sync_id, '') as sync_id, session_id, type, title, content, tool_name, project,
 		        scope, topic_key, revision_count, duplicate_count, last_seen_at, created_at, updated_at, deleted_at
 		 FROM observations WHERE id = ? AND deleted_at IS NULL`, id,
@@ -2444,7 +2813,7 @@ func (s *Store) getObservationBySyncIDTx(tx *sql.Tx, syncID string, includeDelet
 		query += ` AND deleted_at IS NULL`
 	}
 	query += ` ORDER BY id DESC LIMIT 1`
-	row := tx.QueryRow(query, syncID)
+	row := s.queryRowHook(tx, query, syncID)
 	var o Observation
 	if err := row.Scan(&o.ID, &o.SyncID, &o.SessionID, &o.Type, &o.Title, &o.Content, &o.ToolName, &o.Project, &o.Scope, &o.TopicKey, &o.RevisionCount, &o.DuplicateCount, &o.LastSeenAt, &o.CreatedAt, &o.UpdatedAt, &o.DeletedAt); err != nil {
 		return nil, err
@@ -2528,7 +2897,7 @@ func (s *Store) applyObservationDeleteTx(tx *sql.Tx, payload syncObservationPayl
 
 func (s *Store) applyPromptUpsertTx(tx *sql.Tx, payload syncPromptPayload) error {
 	var existingID int64
-	err := tx.QueryRow(`SELECT id FROM user_prompts WHERE sync_id = ? ORDER BY id DESC LIMIT 1`, payload.SyncID).Scan(&existingID)
+	err := s.queryRowHook(tx, `SELECT id FROM user_prompts WHERE sync_id = ? ORDER BY id DESC LIMIT 1`, payload.SyncID).Scan(&existingID)
 	if err == sql.ErrNoRows {
 		_, err = s.execHook(tx,
 			`INSERT INTO user_prompts (sync_id, session_id, content, project) VALUES (?, ?, ?, ?)`,
@@ -3052,7 +3421,7 @@ func (s *Store) PassiveCapture(p PassiveCaptureParams) (*PassiveCaptureResult, e
 		// Check if this learning already exists (by content hash) within this project
 		normHash := hashNormalized(learning)
 		var existingID int64
-		err := s.db.QueryRow(
+		err := s.queryRowHook(s.db,
 			`SELECT id FROM observations
 			 WHERE normalized_hash = ?
 			   AND ifnull(project, '') = ifnull(?, '')

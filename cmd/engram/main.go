@@ -82,7 +82,7 @@ var (
 	exitFunc = os.Exit
 
 	stdinScanner = func() *bufio.Scanner { return bufio.NewScanner(os.Stdin) }
-	userHomeDir        = os.UserHomeDir
+	userHomeDir  = os.UserHomeDir
 )
 
 func main() {
@@ -115,9 +115,18 @@ func main() {
 		cfg.DataDir = dir
 	}
 
-	// Migrate orphaned databases that ended up in wrong locations
+	if driver := os.Getenv("ENGRAM_DB_DRIVER"); driver != "" {
+		cfg.Driver = strings.ToLower(strings.TrimSpace(driver))
+	}
+	if dbURL := os.Getenv("ENGRAM_DATABASE_URL"); dbURL != "" {
+		cfg.DatabaseURL = dbURL
+	}
+
+	// Migrate orphaned local SQLite databases that ended up in wrong locations
 	// (e.g. drive root on Windows due to previous bug).
-	migrateOrphanedDB(cfg.DataDir)
+	if cfg.Driver == "" || cfg.Driver == "sqlite" {
+		migrateOrphanedDB(cfg.DataDir)
+	}
 
 	switch os.Args[1] {
 	case "serve":
@@ -159,6 +168,10 @@ func main() {
 
 func cmdServe(cfg store.Config) {
 	port := 7437 // "ENGR" on phone keypad vibes
+	host := "127.0.0.1"
+	if h := os.Getenv("ENGRAM_HOST"); h != "" {
+		host = h
+	}
 	if p := os.Getenv("ENGRAM_PORT"); p != "" {
 		if n, err := strconv.Atoi(p); err == nil {
 			port = n
@@ -178,6 +191,7 @@ func cmdServe(cfg store.Config) {
 	defer s.Close()
 
 	srv := newHTTPServer(s, port)
+	srv.SetHost(host)
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	sigCh := make(chan os.Signal, 1)
@@ -514,7 +528,11 @@ func cmdStats(cfg store.Config) {
 	fmt.Printf("  Observations: %d\n", stats.TotalObservations)
 	fmt.Printf("  Prompts:      %d\n", stats.TotalPrompts)
 	fmt.Printf("  Projects:     %s\n", projects)
-	fmt.Printf("  Database:     %s/engram.db\n", cfg.DataDir)
+	if cfg.Driver == "postgres" {
+		fmt.Printf("  Database:     postgres (ENGRAM_DATABASE_URL)\n")
+	} else {
+		fmt.Printf("  Database:     %s/engram.db\n", cfg.DataDir)
+	}
 }
 
 func cmdExport(cfg store.Config) {
@@ -814,7 +832,10 @@ Commands:
 
 Environment:
   ENGRAM_DATA_DIR    Override data directory (default: ~/.engram)
+  ENGRAM_DB_DRIVER   Database driver (sqlite or postgres; default: sqlite)
+  ENGRAM_DATABASE_URL PostgreSQL connection URL (required when driver=postgres)
   ENGRAM_PORT        Override HTTP server port (default: 7437)
+  ENGRAM_HOST        HTTP bind host (default: 127.0.0.1)
 
 MCP Configuration (add to your agent's config):
   {

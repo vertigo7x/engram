@@ -46,6 +46,14 @@ func NewFileTransport(syncDir string) *FileTransport {
 // ReadManifest reads the manifest.json from the sync directory.
 // Returns an empty manifest (Version=1) if the file does not exist.
 func (ft *FileTransport) ReadManifest() (*Manifest, error) {
+	if info, err := os.Stat(ft.syncDir); err == nil {
+		if !info.IsDir() {
+			return nil, fmt.Errorf("read manifest: sync path is not a directory")
+		}
+	} else if !os.IsNotExist(err) {
+		return nil, fmt.Errorf("read manifest: %w", err)
+	}
+
 	path := filepath.Join(ft.syncDir, "manifest.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -64,12 +72,26 @@ func (ft *FileTransport) ReadManifest() (*Manifest, error) {
 
 // WriteManifest writes the manifest to manifest.json in the sync directory.
 func (ft *FileTransport) WriteManifest(m *Manifest) error {
+	if info, err := os.Stat(ft.syncDir); err == nil {
+		if !info.IsDir() {
+			return fmt.Errorf("write manifest: sync path is not a directory")
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("write manifest: %w", err)
+	}
+	if err := os.MkdirAll(ft.syncDir, 0o755); err != nil {
+		return fmt.Errorf("write manifest: create sync dir: %w", err)
+	}
+
 	path := filepath.Join(ft.syncDir, "manifest.json")
 	data, err := jsonMarshalManifest(m, "", "  ")
 	if err != nil {
 		return fmt.Errorf("marshal manifest: %w", err)
 	}
-	return os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		return fmt.Errorf("write manifest: %w", err)
+	}
+	return nil
 }
 
 // WriteChunk writes gzipped chunk data to the chunks/ subdirectory.

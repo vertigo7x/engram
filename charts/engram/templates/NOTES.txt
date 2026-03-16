@@ -1,0 +1,9 @@
+1. Obtiene la URL del servicio con:
+   kubectl get svc {{ include "engram.fullname" . }} -n {{ .Release.Namespace }}
+
+2. Prueba el healthcheck:
+   curl http://<service-ip>:{{ .Values.service.port }}/health
+
+3. Variables clave:
+   - ENGRAM_DB_DRIVER={{ .Values.database.driver }}
+   - ENGRAM_DATABASE_URL (si driver=postgres)

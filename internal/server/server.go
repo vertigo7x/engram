@@ -39,6 +39,7 @@ type SyncStatus struct {
 type Server struct {
 	store      *store.Store
 	mux        *http.ServeMux
+	host       string
 	port       int
 	listen     func(network, address string) (net.Listener, error)
 	serve      func(net.Listener, http.Handler) error
@@ -47,10 +48,19 @@ type Server struct {
 }
 
 func New(s *store.Store, port int) *Server {
-	srv := &Server{store: s, port: port, listen: net.Listen, serve: http.Serve}
+	srv := &Server{store: s, host: "127.0.0.1", port: port, listen: net.Listen, serve: http.Serve}
 	srv.mux = http.NewServeMux()
 	srv.routes()
 	return srv
+}
+
+// SetHost configures the host interface to bind the HTTP server.
+func (s *Server) SetHost(host string) {
+	if host == "" {
+		s.host = "127.0.0.1"
+		return
+	}
+	s.host = host
 }
 
 // SetOnWrite configures a callback invoked after every successful local write.
@@ -72,7 +82,11 @@ func (s *Server) notifyWrite() {
 }
 
 func (s *Server) Start() error {
-	addr := fmt.Sprintf("127.0.0.1:%d", s.port)
+	host := s.host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	addr := fmt.Sprintf("%s:%d", host, s.port)
 	listenFn := s.listen
 	if listenFn == nil {
 		listenFn = net.Listen
