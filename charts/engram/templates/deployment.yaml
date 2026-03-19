@@ -31,9 +31,49 @@ spec:
               value: {{ .Values.service.port | quote }}
             - name: ENGRAM_DB_DRIVER
               value: {{ .Values.database.driver | quote }}
+            - name: ENGRAM_MCP_TRANSPORT
+              value: {{ .Values.mcp.transport | quote }}
+            - name: ENGRAM_MCP_HTTP_PATH
+              value: {{ .Values.mcp.httpPath | quote }}
+            - name: ENGRAM_MCP_TOOLS
+              value: {{ .Values.mcp.tools | quote }}
+            {{- if .Values.mcp.baseUrl }}
+            - name: ENGRAM_BASE_URL
+              value: {{ .Values.mcp.baseUrl | quote }}
+            {{- end }}
             {{- if .Values.database.url }}
             - name: ENGRAM_DATABASE_URL
               value: {{ .Values.database.url | quote }}
+            {{- end }}
+            - name: ENGRAM_MCP_AUTH_ENABLED
+              value: {{ .Values.mcp.auth.enabled | quote }}
+            {{- if .Values.mcp.auth.oidcIssuer }}
+            - name: ENGRAM_OIDC_ISSUER
+              value: {{ .Values.mcp.auth.oidcIssuer | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.oidcAudience }}
+            - name: ENGRAM_OIDC_AUDIENCE
+              value: {{ .Values.mcp.auth.oidcAudience | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.jwksUrl }}
+            - name: ENGRAM_OIDC_JWKS_URL
+              value: {{ .Values.mcp.auth.jwksUrl | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.requiredScope }}
+            - name: ENGRAM_OIDC_REQUIRED_SCOPE
+              value: {{ .Values.mcp.auth.requiredScope | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.resourceMetadataPath }}
+            - name: ENGRAM_OAUTH_RESOURCE_METADATA_PATH
+              value: {{ .Values.mcp.auth.resourceMetadataPath | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.resource }}
+            - name: ENGRAM_OAUTH_RESOURCE
+              value: {{ .Values.mcp.auth.resource | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.authorizationServers }}
+            - name: ENGRAM_OAUTH_AUTHORIZATION_SERVERS
+              value: {{ .Values.mcp.auth.authorizationServers | quote }}
             {{- end }}
             - name: ENGRAM_DATA_DIR
               value: /data

@@ -671,6 +671,20 @@ docker run --rm -p 7437:7437 \
   -e ENGRAM_DB_DRIVER=postgres \
   -e ENGRAM_DATABASE_URL="postgres://user:pass@postgres:5432/engram?sslmode=disable" \
   engram:local
+
+# Expose MCP over HTTP (no auth)
+docker run --rm -p 7437:7437 \
+  -e ENGRAM_MCP_TRANSPORT=http \
+  engram:local
+
+# Expose MCP over HTTP with OIDC JWT auth
+docker run --rm -p 7437:7437 \
+  -e ENGRAM_MCP_TRANSPORT=http \
+  -e ENGRAM_MCP_AUTH_ENABLED=true \
+  -e ENGRAM_OIDC_ISSUER="https://your-issuer.example.com" \
+  -e ENGRAM_OIDC_AUDIENCE="engram-mcp" \
+  -e ENGRAM_OIDC_REQUIRED_SCOPE="engram.mcp" \
+  engram:local
 ```
 
 ### Kubernetes (Helm)
@@ -684,9 +698,77 @@ helm install engram ./charts/engram
 helm install engram ./charts/engram \
   --set database.driver=postgres \
   --set database.url="postgres://user:pass@postgres:5432/engram?sslmode=disable"
+
+# Enable MCP over HTTP + OIDC auth
+helm install engram ./charts/engram \
+  --set mcp.transport=http \
+  --set mcp.auth.enabled=true \
+  --set mcp.auth.oidcIssuer="https://your-issuer.example.com" \
+  --set mcp.auth.oidcAudience="engram-mcp" \
+  --set mcp.auth.requiredScope="engram.mcp"
 ```
 
-By design, there is currently no built-in auth layer; deploy it in a trusted internal network only.
+When `ENGRAM_MCP_AUTH_ENABLED=true`, Engram protects MCP HTTP with Bearer token validation and exposes OAuth protected resource metadata at `/.well-known/oauth-protected-resource` for MCP OAuth discovery.
+
+### Keycloak OAuth2/OIDC Example (OpenCode + MCP HTTP)
+
+If you use Keycloak as OAuth provider, configure both Keycloak and Engram with matching `issuer` and `audience`.
+
+1. In Keycloak (realm example: `Shared`), create a client for OpenCode (example: `engram-local`) with:
+   - Standard flow enabled
+   - PKCE (`S256`) enabled
+   - Redirect URIs including:
+     - `http://127.0.0.1:*/mcp/oauth/callback`
+     - `http://localhost:*/mcp/oauth/callback`
+2. Create a client scope (for example `mcp:tools`) and add an **Audience** mapper with `Included Custom Audience = engram-mcp`.
+3. Assign that scope to the OpenCode client (default or requested explicitly).
+
+Run Engram with matching OAuth settings:
+
+```bash
+docker run --rm -p 7437:7437 \
+  --add-host=host.docker.internal:host-gateway \
+  -e ENGRAM_HOST=0.0.0.0 \
+  -e ENGRAM_DB_DRIVER=postgres \
+  -e ENGRAM_DATABASE_URL="postgres://user:pass@host.docker.internal:5432/engram?sslmode=disable" \
+  -e ENGRAM_MCP_TRANSPORT=http \
+  -e ENGRAM_MCP_HTTP_PATH=/mcp \
+  -e ENGRAM_MCP_AUTH_ENABLED=true \
+  -e ENGRAM_OIDC_ISSUER="http://localhost:28080/realms/Shared" \
+  -e ENGRAM_OIDC_AUDIENCE="engram-mcp" \
+  -e ENGRAM_OIDC_JWKS_URL="http://host.docker.internal:28080/realms/Shared/protocol/openid-connect/certs" \
+  -e ENGRAM_BASE_URL="http://localhost:7437" \
+  -e ENGRAM_OAUTH_RESOURCE="http://localhost:7437/mcp" \
+  -e ENGRAM_OAUTH_AUTHORIZATION_SERVERS="http://localhost:28080/realms/Shared" \
+  engram:local
+```
+
+OpenCode remote MCP config example:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "engram_remote": {
+      "type": "remote",
+      "url": "http://localhost:7437/mcp",
+      "enabled": true,
+      "oauth": {
+        "clientId": "engram-local",
+        "scope": "openid profile mcp:tools"
+      }
+    }
+  }
+}
+```
+
+Useful checks:
+
+```bash
+curl -i http://localhost:7437/.well-known/oauth-protected-resource
+opencode mcp auth engram_remote
+opencode mcp debug engram_remote
+```
 
 ## CLI
 
@@ -874,6 +956,18 @@ The binary includes SQLite (via [modernc.org/sqlite](https://pkg.go.dev/modernc.
 | `ENGRAM_DATABASE_URL` | PostgreSQL connection URL (required when driver is `postgres`) | empty |
 | `ENGRAM_HOST` | HTTP bind host | `127.0.0.1` |
 | `ENGRAM_PORT` | HTTP server port | `7437` |
+| `ENGRAM_MCP_TRANSPORT` | MCP transport in `engram serve` (`http` to enable) | `stdio` |
+| `ENGRAM_MCP_HTTP_PATH` | MCP HTTP path when transport is enabled | `/mcp` |
+| `ENGRAM_MCP_TOOLS` | MCP tools filter/profile for HTTP transport | `agent` |
+| `ENGRAM_MCP_AUTH_ENABLED` | Enable JWT OIDC auth middleware for MCP HTTP | `false` |
+| `ENGRAM_OIDC_ISSUER` | OIDC issuer URL (required when auth enabled) | empty |
+| `ENGRAM_OIDC_AUDIENCE` | OIDC audience (required when auth enabled) | empty |
+| `ENGRAM_OIDC_JWKS_URL` | Optional JWKS URL override | empty |
+| `ENGRAM_OIDC_REQUIRED_SCOPE` | Optional required scope in token | empty |
+| `ENGRAM_BASE_URL` | Public base URL for metadata/challenges behind ingress | empty |
+| `ENGRAM_OAUTH_RESOURCE_METADATA_PATH` | OAuth protected resource metadata path | `/.well-known/oauth-protected-resource` |
+| `ENGRAM_OAUTH_RESOURCE` | OAuth resource identifier (defaults to MCP URL) | empty |
+| `ENGRAM_OAUTH_AUTHORIZATION_SERVERS` | Comma-separated auth server URLs in PRM | `ENGRAM_OIDC_ISSUER` |
 
 ### Windows Config Paths
 

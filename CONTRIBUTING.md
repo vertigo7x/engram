@@ -17,6 +17,7 @@ After alignment in the issue, open the PR and link it to the issue.
 
 - Keep PR scope focused (one logical change)
 - Include validation evidence (`go test ./...`, targeted tests)
+- If charts change, include `helm lint charts/engram` output
 - Update docs in the same PR when behavior changes
 - Do not reference endpoints/scripts that do not exist in code
 - Use conventional commit messages

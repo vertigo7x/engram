@@ -4,6 +4,17 @@
 2. Prueba el healthcheck:
    curl http://<service-ip>:{{ .Values.service.port }}/health
 
-3. Variables clave:
+3. Prueba MCP HTTP:
+   curl -i -X POST http://<service-ip>:{{ .Values.service.port }}{{ .Values.mcp.httpPath }} \
+     -H "content-type: application/json" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}'
+
+4. Variables clave:
    - ENGRAM_DB_DRIVER={{ .Values.database.driver }}
    - ENGRAM_DATABASE_URL (si driver=postgres)
+   - ENGRAM_MCP_TRANSPORT={{ .Values.mcp.transport }}
+   - ENGRAM_MCP_AUTH_ENABLED={{ .Values.mcp.auth.enabled }}
+   - ENGRAM_BASE_URL={{ default "<set me>" .Values.mcp.baseUrl }}
+
+5. OAuth metadata (si auth habilitado):
+   curl http://<service-ip>:{{ .Values.service.port }}/.well-known/oauth-protected-resource

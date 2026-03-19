@@ -1,10 +1,16 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +24,7 @@ import (
 	"github.com/Gentleman-Programming/engram/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/golang-jwt/jwt/v5"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
@@ -79,6 +86,7 @@ func stubRuntimeHooks(t *testing.T) {
 	oldStartHTTP := startHTTP
 	oldNewMCPServer := newMCPServer
 	oldNewMCPServerWithTools := newMCPServerWithTools
+	oldNewMCPHTTPServer := newMCPHTTPServer
 	oldServeMCP := serveMCP
 	oldNewTUIModel := newTUIModel
 	oldNewTeaProgram := newTeaProgram
@@ -106,6 +114,7 @@ func stubRuntimeHooks(t *testing.T) {
 	newMCPServerWithTools = func(s *store.Store, allowlist map[string]bool) *mcpserver.MCPServer {
 		return mcpserver.NewMCPServer("test", "0", mcpserver.WithRecovery())
 	}
+	newMCPHTTPServer = mcpserver.NewStreamableHTTPServer
 	serveMCP = func(_ *mcpserver.MCPServer, _ ...mcpserver.StdioOption) error { return nil }
 	newTUIModel = func(_ *store.Store) tui.Model { return tui.New(nil, "") }
 	newTeaProgram = func(tea.Model, ...tea.ProgramOption) *tea.Program { return &tea.Program{} }
@@ -142,6 +151,7 @@ func stubRuntimeHooks(t *testing.T) {
 		startHTTP = oldStartHTTP
 		newMCPServer = oldNewMCPServer
 		newMCPServerWithTools = oldNewMCPServerWithTools
+		newMCPHTTPServer = oldNewMCPHTTPServer
 		serveMCP = oldServeMCP
 		newTUIModel = oldNewTUIModel
 		newTeaProgram = oldNewTeaProgram
@@ -200,6 +210,7 @@ func TestCmdServeParsesPortAndErrors(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			stubExitWithPanic(t)
+			t.Setenv("ENGRAM_MCP_TRANSPORT", "stdio")
 			if tc.envPort != "" {
 				t.Setenv("ENGRAM_PORT", tc.envPort)
 			} else {
@@ -998,4 +1009,155 @@ func TestCmdMCP(t *testing.T) {
 		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdMCP(cfg) })
 		assertFatal(t, stderr, recovered, "stdio failed")
 	})
+}
+
+func TestCmdServeMCPHTTPTransport(t *testing.T) {
+	cfg := testConfig(t)
+	stubRuntimeHooks(t)
+	stubExitWithPanic(t)
+
+	t.Run("http transport mounts MCP handler", func(t *testing.T) {
+		t.Setenv("ENGRAM_MCP_TRANSPORT", "http")
+		t.Setenv("ENGRAM_MCP_HTTP_PATH", "/mcp")
+		t.Setenv("ENGRAM_MCP_AUTH_ENABLED", "false")
+
+		seenMCPHTTP := false
+		newMCPHTTPServer = func(_ *mcpserver.MCPServer, _ ...mcpserver.StreamableHTTPOption) *mcpserver.StreamableHTTPServer {
+			seenMCPHTTP = true
+			return mcpserver.NewStreamableHTTPServer(mcpserver.NewMCPServer("test", "0"))
+		}
+
+		withArgs(t, "engram", "serve")
+		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdServe(cfg) })
+		if recovered != nil {
+			t.Fatalf("expected no panic, got %v stderr=%q", recovered, stderr)
+		}
+		if !seenMCPHTTP {
+			t.Fatal("expected HTTP MCP server to be created")
+		}
+	})
+
+	t.Run("oidc enabled with missing issuer fatals", func(t *testing.T) {
+		t.Setenv("ENGRAM_MCP_TRANSPORT", "http")
+		t.Setenv("ENGRAM_MCP_AUTH_ENABLED", "true")
+		t.Setenv("ENGRAM_OIDC_ISSUER", "")
+		t.Setenv("ENGRAM_OIDC_AUDIENCE", "engram-mcp")
+
+		withArgs(t, "engram", "serve")
+		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdServe(cfg) })
+		if _, ok := recovered.(exitCode); !ok {
+			t.Fatalf("expected fatal exit, got %v", recovered)
+		}
+		if !strings.Contains(stderr, "configure OIDC verifier") {
+			t.Fatalf("expected oidc config error, got %q", stderr)
+		}
+	})
+}
+
+func TestCmdServeMCPHTTPAuthMetadataAndChallenge(t *testing.T) {
+	cfg := testConfig(t)
+	stubRuntimeHooks(t)
+	stubExitWithPanic(t)
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate rsa key: %v", err)
+	}
+	n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
+	e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
+
+	issuer := "https://issuer.example"
+	audience := "engram-mcp"
+	jwksPath := "/jwks.json"
+	var jwksServer *httptest.Server
+	jwksServer = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case jwksPath:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"keys": []map[string]any{{
+					"kty": "RSA",
+					"kid": "k1",
+					"n":   n,
+					"e":   e,
+				}},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer jwksServer.Close()
+
+	t.Setenv("ENGRAM_MCP_TRANSPORT", "http")
+	t.Setenv("ENGRAM_MCP_HTTP_PATH", "/mcp")
+	t.Setenv("ENGRAM_MCP_AUTH_ENABLED", "true")
+	t.Setenv("ENGRAM_OIDC_ISSUER", issuer)
+	t.Setenv("ENGRAM_OIDC_AUDIENCE", audience)
+	t.Setenv("ENGRAM_OIDC_JWKS_URL", jwksServer.URL+jwksPath)
+	t.Setenv("ENGRAM_OIDC_REQUIRED_SCOPE", "engram.mcp")
+	t.Setenv("ENGRAM_BASE_URL", "https://mcp.example.com")
+	t.Setenv("ENGRAM_OAUTH_AUTHORIZATION_SERVERS", "https://auth.example.com")
+
+	withArgs(t, "engram", "serve")
+
+	var handler http.Handler
+	newHTTPServer = func(s *store.Store, port int) *engramsrv.Server {
+		srv := engramsrv.New(s, port)
+		handler = srv.Handler()
+		return srv
+	}
+	startHTTP = func(_ *engramsrv.Server) error { return nil }
+
+	_, stderr, recovered := captureOutputAndRecover(t, func() { cmdServe(cfg) })
+	if recovered != nil {
+		t.Fatalf("expected no panic, got %v stderr=%q", recovered, stderr)
+	}
+	if handler == nil {
+		t.Fatal("expected server handler to be captured")
+	}
+
+	mdReq := httptest.NewRequest(http.MethodGet, "/.well-known/oauth-protected-resource", nil)
+	mdRec := httptest.NewRecorder()
+	handler.ServeHTTP(mdRec, mdReq)
+	if mdRec.Code != http.StatusOK {
+		t.Fatalf("expected metadata 200, got %d body=%s", mdRec.Code, mdRec.Body.String())
+	}
+	var md map[string]any
+	if err := json.NewDecoder(mdRec.Body).Decode(&md); err != nil {
+		t.Fatalf("decode metadata: %v", err)
+	}
+	if md["resource"] != "http://localhost:7437/mcp" && md["resource"] != "http://127.0.0.1:7437/mcp" {
+		t.Fatalf("unexpected resource: %v", md["resource"])
+	}
+
+	unauthReq := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`))
+	unauthReq.Header.Set("Content-Type", "application/json")
+	unauthRec := httptest.NewRecorder()
+	handler.ServeHTTP(unauthRec, unauthReq)
+	if unauthRec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", unauthRec.Code)
+	}
+	www := unauthRec.Header().Get("WWW-Authenticate")
+	if !strings.Contains(www, `resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"`) {
+		t.Fatalf("expected resource_metadata challenge, got %q", www)
+	}
+
+	noScope := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": issuer,
+		"aud": audience,
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+		"iat": time.Now().Add(-1 * time.Minute).Unix(),
+	})
+	noScope.Header["kid"] = "k1"
+	noScopeToken, err := noScope.SignedString(key)
+	if err != nil {
+		t.Fatalf("sign token: %v", err)
+	}
+	forbiddenReq := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"1"}}}`))
+	forbiddenReq.Header.Set("Content-Type", "application/json")
+	forbiddenReq.Header.Set("Authorization", "Bearer "+noScopeToken)
+	forbiddenRec := httptest.NewRecorder()
+	handler.ServeHTTP(forbiddenRec, forbiddenReq)
+	if forbiddenRec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for insufficient scope, got %d", forbiddenRec.Code)
+	}
 }

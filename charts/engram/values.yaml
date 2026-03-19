@@ -24,6 +24,21 @@ database:
   driver: sqlite
   url: ""
 
+mcp:
+  transport: http
+  httpPath: /mcp
+  tools: agent
+  baseUrl: ""
+  auth:
+    enabled: false
+    oidcIssuer: ""
+    oidcAudience: ""
+    jwksUrl: ""
+    requiredScope: ""
+    resourceMetadataPath: /.well-known/oauth-protected-resource
+    resource: ""
+    authorizationServers: ""
+
 persistence:
   enabled: true
   size: 10Gi

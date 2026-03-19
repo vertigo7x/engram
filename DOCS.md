@@ -6,11 +6,11 @@
 
 ## What is Engram?
 
-An agent-agnostic persistent memory system. A Go binary with SQLite + FTS5 full-text search, exposed via CLI, HTTP API, and MCP server. Thin adapter plugins connect it to specific agents (OpenCode, Claude Code, Cursor, Windsurf, etc.).
+An agent-agnostic persistent memory system. A Go binary with relational storage (SQLite by default, PostgreSQL optional), exposed via CLI, HTTP API, and MCP server. Thin adapter plugins connect it to specific agents (OpenCode, Claude Code, Cursor, Windsurf, etc.).
 
-**Why Go?** Single binary, cross-platform, no runtime dependencies. Uses `modernc.org/sqlite` (pure Go, no CGO).
+**Why Go?** Single binary, cross-platform, no runtime dependencies. Uses `modernc.org/sqlite` (pure Go, no CGO) and optional PostgreSQL via `github.com/lib/pq`.
 
-- **Module**: `github.com/alanbuscaglia/engram`
+- **Module**: `github.com/Gentleman-Programming/engram`
 - **Version**: 0.1.0
 
 ---
@@ -22,9 +22,9 @@ The Go binary is the brain. Thin adapter plugins per-agent talk to it via HTTP o
 ```
 Agent (OpenCode/Claude Code/Cursor/etc.)
     ↓ (plugin or MCP)
-Engram Go Binary
+Engram Go Binary / Service
     ↓
-SQLite + FTS5 (~/.engram/engram.db)
+Relational DB (SQLite default / PostgreSQL optional)
 ```
 
 Six interfaces:
@@ -42,7 +42,7 @@ Six interfaces:
 engram/
 ├── cmd/engram/main.go              # CLI entrypoint — all commands
 ├── internal/
-│   ├── store/store.go              # Core: SQLite + FTS5 + all data operations
+│   ├── store/store.go              # Core data layer: SQLite/PostgreSQL + search + sync journal
 │   ├── server/server.go            # HTTP REST API server (port 7437)
 │   ├── mcp/mcp.go                  # MCP stdio server (13 tools)
 │   ├── sync/sync.go                # Git sync: manifest + chunks (gzipped JSONL)
@@ -80,6 +80,32 @@ engram/
 - Synchronous NORMAL
 - Foreign keys ON
 
+### PostgreSQL Mode
+
+- Set `ENGRAM_DB_DRIVER=postgres`
+- Set `ENGRAM_DATABASE_URL=postgres://...`
+- Uses compatibility rewrites for SQL placeholders/functions
+- Uses `ILIKE` search fallback (SQLite keeps FTS5 virtual tables)
+
+### MCP HTTP Transport
+
+- `engram serve` can expose MCP over HTTP when `ENGRAM_MCP_TRANSPORT=http`
+- Endpoint path is configured with `ENGRAM_MCP_HTTP_PATH` (default `/mcp`)
+- Tool profile/filter is configured with `ENGRAM_MCP_TOOLS` (for example `agent`, `admin`, or `agent,admin`)
+
+### MCP OIDC JWT Authentication
+
+- Enable with `ENGRAM_MCP_AUTH_ENABLED=true`
+- Required config:
+  - `ENGRAM_OIDC_ISSUER`
+  - `ENGRAM_OIDC_AUDIENCE`
+- Optional config:
+  - `ENGRAM_OIDC_JWKS_URL` (if omitted, discovery uses `/.well-known/openid-configuration`)
+  - `ENGRAM_OIDC_REQUIRED_SCOPE`
+- Middleware expects `Authorization: Bearer <token>` and validates issuer/audience/signature (+ optional scope)
+- On auth failures, MCP HTTP returns OAuth-style `WWW-Authenticate: Bearer ...` including `resource_metadata`.
+- Exposes OAuth Protected Resource Metadata (RFC 9728) at `/.well-known/oauth-protected-resource`.
+
 ---
 
 ## CLI Commands
@@ -105,7 +131,111 @@ engram help               Show help
 | Variable | Description | Default |
 |---|---|---|
 | `ENGRAM_DATA_DIR` | Override data directory | `~/.engram` |
+| `ENGRAM_DB_DRIVER` | Database driver (`sqlite` or `postgres`) | `sqlite` |
+| `ENGRAM_DATABASE_URL` | PostgreSQL connection URL (required when driver is `postgres`) | empty |
+| `ENGRAM_HOST` | HTTP bind host | `127.0.0.1` |
 | `ENGRAM_PORT` | Override HTTP server port | `7437` |
+| `ENGRAM_MCP_TRANSPORT` | MCP transport in `engram serve` (`http` to enable) | `stdio` |
+| `ENGRAM_MCP_HTTP_PATH` | MCP HTTP endpoint path | `/mcp` |
+| `ENGRAM_MCP_TOOLS` | MCP tool profile/filter | `agent` |
+| `ENGRAM_MCP_AUTH_ENABLED` | Enable OIDC JWT auth for MCP HTTP | `false` |
+| `ENGRAM_OIDC_ISSUER` | OIDC issuer URL (required when auth enabled) | empty |
+| `ENGRAM_OIDC_AUDIENCE` | OIDC audience (required when auth enabled) | empty |
+| `ENGRAM_OIDC_JWKS_URL` | Optional JWKS URL override | empty |
+| `ENGRAM_OIDC_REQUIRED_SCOPE` | Optional required scope | empty |
+| `ENGRAM_BASE_URL` | Public base URL for metadata/challenges (for ingress) | empty |
+| `ENGRAM_OAUTH_RESOURCE_METADATA_PATH` | OAuth protected resource metadata path | `/.well-known/oauth-protected-resource` |
+| `ENGRAM_OAUTH_RESOURCE` | OAuth resource identifier (defaults to MCP URL) | empty |
+| `ENGRAM_OAUTH_AUTHORIZATION_SERVERS` | Comma-separated auth server URLs for PRM | `ENGRAM_OIDC_ISSUER` |
+
+---
+
+## Container and Kubernetes Deployment
+
+### Docker
+
+```bash
+docker build -t engram:local .
+
+# SQLite mode
+docker run --rm -p 7437:7437 -v engram-data:/data engram:local
+
+# PostgreSQL mode
+docker run --rm -p 7437:7437 \
+  -e ENGRAM_DB_DRIVER=postgres \
+  -e ENGRAM_DATABASE_URL="postgres://user:pass@postgres:5432/engram?sslmode=disable" \
+  engram:local
+```
+
+### Helm
+
+Chart location: `charts/engram`
+
+```bash
+helm install engram ./charts/engram
+
+# PostgreSQL mode
+helm install engram ./charts/engram \
+  --set database.driver=postgres \
+  --set database.url="postgres://user:pass@postgres:5432/engram?sslmode=disable"
+```
+
+For public deployments, enable MCP auth with OIDC and expose a stable `ENGRAM_BASE_URL` so clients receive correct `resource_metadata` URLs in `WWW-Authenticate` challenges.
+
+### Keycloak Provider Setup (Local Example)
+
+Reference setup for OpenCode + remote MCP HTTP:
+
+1. Keycloak realm (example: `Shared`).
+2. OpenCode OAuth client (example: `engram-local`):
+   - Standard Flow enabled
+   - PKCE S256 enabled
+   - Redirect URIs:
+     - `http://127.0.0.1:*/mcp/oauth/callback`
+     - `http://localhost:*/mcp/oauth/callback`
+3. Client scope (example: `mcp:tools`) with Audience mapper:
+   - Included Custom Audience: `engram-mcp`
+4. Assign scope to client (default or requested explicitly).
+
+Engram env alignment example:
+
+```bash
+ENGRAM_MCP_TRANSPORT=http
+ENGRAM_MCP_AUTH_ENABLED=true
+ENGRAM_OIDC_ISSUER=http://localhost:28080/realms/Shared
+ENGRAM_OIDC_AUDIENCE=engram-mcp
+ENGRAM_OIDC_JWKS_URL=http://host.docker.internal:28080/realms/Shared/protocol/openid-connect/certs
+ENGRAM_BASE_URL=http://localhost:7437
+ENGRAM_OAUTH_RESOURCE=http://localhost:7437/mcp
+ENGRAM_OAUTH_AUTHORIZATION_SERVERS=http://localhost:28080/realms/Shared
+```
+
+OpenCode config snippet:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "engram_remote": {
+      "type": "remote",
+      "url": "http://localhost:7437/mcp",
+      "enabled": true,
+      "oauth": {
+        "clientId": "engram-local",
+        "scope": "openid profile mcp:tools"
+      }
+    }
+  }
+}
+```
+
+Debug commands:
+
+```bash
+curl -i http://localhost:7437/.well-known/oauth-protected-resource
+opencode mcp auth engram_remote
+opencode mcp debug engram_remote
+```
 
 ---
 
