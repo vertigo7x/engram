@@ -15,9 +15,24 @@ jobs:
   publish:
     name: Build and Publish Docker Image
     runs-on: ubuntu-latest
+    env:
+      DEFAULT_IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/engram
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve image repository
+        id: image
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo='${{ vars.DOCKERHUB_REPOSITORY }}'
+          if [ -z "$repo" ]; then
+            repo="$DEFAULT_IMAGE_REPO"
+          fi
+          repo="${repo,,}"
+          echo "repository=$repo" >> "$GITHUB_OUTPUT"
+          echo "Using Docker image repository: $repo"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -32,7 +47,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: gentlemanprogramming/engram
+          images: ${{ steps.image.outputs.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
