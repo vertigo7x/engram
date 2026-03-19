@@ -41,9 +41,22 @@ spec:
             - name: ENGRAM_BASE_URL
               value: {{ .Values.mcp.baseUrl | quote }}
             {{- end }}
-            {{- if .Values.database.url }}
+            {{- if and (not .Values.database.existingSecret) (not .Values.database.createSecret) .Values.database.url }}
             - name: ENGRAM_DATABASE_URL
               value: {{ .Values.database.url | quote }}
+            {{- end }}
+            {{- if .Values.database.existingSecret }}
+            - name: ENGRAM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | quote }}
+                  key: {{ .Values.database.urlSecretKey | quote }}
+            {{- else if and .Values.database.createSecret .Values.database.url }}
+            - name: ENGRAM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "engram.fullname" . }}
+                  key: {{ .Values.database.urlSecretKey | quote }}
             {{- end }}
             - name: ENGRAM_MCP_AUTH_ENABLED
               value: {{ .Values.mcp.auth.enabled | quote }}

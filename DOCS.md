@@ -182,6 +182,27 @@ helm install engram ./charts/engram \
 
 For public deployments, enable MCP auth with OIDC and expose a stable `ENGRAM_BASE_URL` so clients receive correct `resource_metadata` URLs in `WWW-Authenticate` challenges.
 
+### Kubernetes Secrets for Database URL
+
+Avoid hardcoding `database.url` in shared values files. The chart supports secret-based DB URL injection:
+
+- `database.existingSecret`: existing Secret name containing DB URL
+- `database.urlSecretKey`: key name inside the Secret (default `ENGRAM_DATABASE_URL`)
+- `database.createSecret`: set `true` to have Helm create the Secret from `database.url`
+
+Recommended (pre-created Secret):
+
+```bash
+kubectl create secret generic engram-db \
+  --from-literal=ENGRAM_DATABASE_URL='postgres://user:pass@postgres:5432/engram?sslmode=require' \
+  -n engram
+
+helm upgrade --install engram ./charts/engram -n engram \
+  --set database.driver=postgres \
+  --set database.existingSecret=engram-db \
+  --set database.urlSecretKey=ENGRAM_DATABASE_URL
+```
+
 ### Keycloak Provider Setup (Local Example)
 
 Reference setup for OpenCode + remote MCP HTTP:
