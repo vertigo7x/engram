@@ -15,7 +15,7 @@
         "name": "Gentleman Programming"
       },
       "source": {
-        "type": "git-subdir",
+        "source": "git-subdir",
         "url": "https://github.com/Gentleman-Programming/engram.git",
         "path": "plugin/claude-code"
       },

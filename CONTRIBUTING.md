@@ -1,26 +1,132 @@
 # Contributing to Engram
 
-Thanks for contributing.
+Thanks for contributing. Engram enforces a strict **issue-first workflow** — every change starts with an approved issue.
 
-## Contribution Flow (Issue First)
+---
 
-Before opening a PR, open an issue to discuss the change:
+## Contribution Workflow
 
-1. Problem statement (what is broken or missing)
-2. Proposed approach (high-level)
-3. Risks/tradeoffs
-4. Affected areas (API, CLI, TUI, plugins, docs, skills)
+```
+Open Issue → Get status:approved → Open PR → Add type:* label → Review & Merge
+```
 
-After alignment in the issue, open the PR and link it to the issue.
+### Step 1: Open an Issue
+
+Use the correct template:
+- **Bug Report** — for bugs
+- **Feature Request** — for new features or improvements
+
+> ⚠️ Blank issues are disabled. You must use a template.
+
+Fill in all required fields. Your issue will automatically receive the `status:needs-review` label.
+
+### Step 2: Wait for Approval
+
+A maintainer will review the issue and add the `status:approved` label if it's accepted for implementation.
+
+**Do not open a PR until the issue is approved.** Automated checks will block PRs that reference unapproved issues.
+
+### Step 3: Open a Pull Request
+
+Once the issue is approved:
+
+1. Fork the repo and create a branch from `main`
+2. Implement your change
+3. Open a PR using the PR template — **link the approved issue** with `Closes #N`
+4. Add exactly **one `type:*` label** to the PR (see label system below)
+
+### Step 4: Automated PR Checks
+
+Five checks run automatically on every PR:
+
+#### PR Validation
+
+| Check | What it verifies |
+|-------|-----------------|
+| **Check Issue Reference** | PR body contains `Closes #N`, `Fixes #N`, or `Resolves #N` |
+| **Check Issue Has status:approved** | The linked issue has the `status:approved` label |
+| **Check PR Has type:* Label** | PR has exactly one `type:*` label |
+
+#### CI Tests
+
+| Check | What it runs |
+|-------|-------------|
+| **Unit Tests** | `go test ./...` — all tests except those tagged with `//go:build e2e` |
+| **E2E Tests** | `go test -tags e2e ./internal/server/...` — end-to-end integration tests |
+
+All five checks must pass before a PR can be merged.
+
+> **Repo admin note:** Set these as required status checks in branch protection rules for `main`: `Unit Tests`, `E2E Tests`, and `PR Validation`.
+
+---
+
+## Label System
+
+### Type Labels (required on every PR — pick exactly one)
+
+| Label | Color | Use for |
+|-------|-------|---------|
+| `type:bug` | 🔴 | Bug fixes |
+| `type:feature` | 🔵 | New features |
+| `type:docs` | 🔵 | Documentation-only changes |
+| `type:refactor` | 🟣 | Code refactoring with no behavior change |
+| `type:chore` | ⚪ | Maintenance, tooling, dependencies |
+| `type:breaking-change` | 🔴 | Breaking changes (requires major version bump) |
+
+### Status Labels (set by maintainers)
+
+| Label | Meaning |
+|-------|---------|
+| `status:needs-review` | Awaiting maintainer review (auto-applied to new issues) |
+| `status:approved` | Approved for implementation — PRs can now be opened |
+
+### Priority Labels (set by maintainers)
+
+`priority:high`, `priority:medium`, `priority:low`
+
+---
 
 ## PR Rules
 
-- Keep PR scope focused (one logical change)
-- Include validation evidence (`go test ./...`, targeted tests)
+- Keep PR scope focused — one logical change per PR
+- Use [conventional commits](https://www.conventionalcommits.org/) format
+- Ensure all tests pass locally before pushing:
+  - Unit: `go test ./...`
+  - E2E: `go test -tags e2e ./internal/server/...`
 - Update docs in the same PR when behavior changes
 - Do not reference endpoints/scripts that do not exist in code
-- Use conventional commit messages
 - Do not include `Co-Authored-By` trailers in commits
+
+### Conventional Commit Format
+
+```
+<type>(<scope>): <short description>
+
+[optional body]
+
+[optional footer]
+```
+
+**Examples:**
+
+```
+feat(cli): add --json flag to session list command
+
+fix(store): prevent duplicate observation insert on retry
+
+docs(contributing): add label system documentation
+
+refactor(internal): extract search query sanitizer
+
+chore(deps): bump github.com/charmbracelet/bubbletea to v0.26
+
+fix!: change session ID format (breaking change)
+BREAKING CHANGE: session IDs are now UUIDs instead of integers
+```
+
+Types map to labels: `feat` → `type:feature`, `fix` → `type:bug`, `docs` → `type:docs`, `refactor` → `type:refactor`, `chore` → `type:chore`.
+
+---
 
 ## Skill Authoring Standard
 
@@ -34,6 +140,8 @@ Use a **hybrid format**:
 Why hybrid:
 - Structured base protects correctness and architecture intent
 - Cookbook improves execution consistency for common flows
+
+---
 
 ## Agent Skill Linking
 

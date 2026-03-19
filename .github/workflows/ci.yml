@@ -10,7 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -21,5 +22,20 @@ jobs:
         with:
           go-version: "1.25"
 
-      - name: Run tests
+      - name: Run unit tests
         run: go test ./...
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Run e2e tests
+        run: go test -tags e2e ./internal/server/...
