@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/Gentleman-Programming/engram/internal/auth"
 	"github.com/Gentleman-Programming/engram/internal/mcp"
 	"github.com/Gentleman-Programming/engram/internal/server"
 	"github.com/Gentleman-Programming/engram/internal/setup"
@@ -47,6 +49,7 @@ var (
 	newMCPServerWithTools = mcp.NewServerWithTools
 	resolveMCPTools       = mcp.ResolveTools
 	serveMCP              = mcpserver.ServeStdio
+	newMCPHTTPServer      = mcpserver.NewStreamableHTTPServer
 
 	newTUIModel   = func(s *store.Store) tui.Model { return tui.New(s, version) }
 	newTeaProgram = tea.NewProgram
@@ -169,6 +172,7 @@ func main() {
 func cmdServe(cfg store.Config) {
 	port := 7437 // "ENGR" on phone keypad vibes
 	host := "127.0.0.1"
+	baseURL := strings.TrimSpace(os.Getenv("ENGRAM_BASE_URL"))
 	if h := os.Getenv("ENGRAM_HOST"); h != "" {
 		host = h
 	}
@@ -177,6 +181,15 @@ func cmdServe(cfg store.Config) {
 			port = n
 		}
 	}
+	mcpTransport := strings.ToLower(strings.TrimSpace(os.Getenv("ENGRAM_MCP_TRANSPORT")))
+	if mcpTransport == "" {
+		mcpTransport = "stdio"
+	}
+	mcpPath := strings.TrimSpace(os.Getenv("ENGRAM_MCP_HTTP_PATH"))
+	if mcpPath == "" {
+		mcpPath = "/mcp"
+	}
+	toolsFilter := strings.TrimSpace(os.Getenv("ENGRAM_MCP_TOOLS"))
 	// Allow: engram serve 8080
 	if len(os.Args) > 2 {
 		if n, err := strconv.Atoi(os.Args[2]); err == nil {
@@ -192,6 +205,36 @@ func cmdServe(cfg store.Config) {
 
 	srv := newHTTPServer(s, port)
 	srv.SetHost(host)
+	srv.SetBaseURL(baseURL)
+
+	if mcpTransport == "http" {
+		var mcpSrv *mcpserver.MCPServer
+		if toolsFilter != "" {
+			mcpSrv = newMCPServerWithTools(s, resolveMCPTools(toolsFilter))
+		} else {
+			mcpSrv = newMCPServer(s)
+		}
+
+		mcpHandler := http.Handler(newMCPHTTPServer(mcpSrv, mcpserver.WithEndpointPath(mcpPath)))
+		verifier, authCfg, err := buildOIDCVerifierFromEnv(host, port, mcpPath)
+		if err != nil {
+			fatal(err)
+		} else if verifier != nil {
+			srv.SetMCPHandler(authCfg.ResourceMetadataPath, auth.ProtectedResourceMetadataHandler(auth.OAuthProtectedResourceMetadata{
+				Resource:             authCfg.MCPResource,
+				AuthorizationServers: authCfg.AuthorizationServers,
+				ScopesSupported:      authCfg.ScopesSupported,
+			}))
+			mcpHandler = auth.Middleware(verifier, auth.MiddlewareConfig{
+				Realm:               "mcp",
+				ResourceMetadataURL: authCfg.ResourceMetadataURL,
+				RequiredScope:       authCfg.RequiredScope,
+			})(mcpHandler)
+		}
+
+		srv.SetMCPHandler(mcpPath, mcpHandler)
+		log.Printf("[engram] MCP HTTP transport enabled on %s", mcpPath)
+	}
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	sigCh := make(chan os.Signal, 1)
@@ -236,6 +279,95 @@ func cmdMCP(cfg store.Config) {
 	if err := serveMCP(mcpSrv); err != nil {
 		fatal(err)
 	}
+}
+
+type mcpAuthConfig struct {
+	RequiredScope        string
+	ResourceMetadataPath string
+	ResourceMetadataURL  string
+	MCPResource          string
+	AuthorizationServers []string
+	ScopesSupported      []string
+}
+
+func buildOIDCVerifierFromEnv(host string, port int, mcpPath string) (*auth.OIDCVerifier, *mcpAuthConfig, error) {
+	enabled := strings.EqualFold(strings.TrimSpace(os.Getenv("ENGRAM_MCP_AUTH_ENABLED")), "true")
+	if !enabled {
+		return nil, nil, nil
+	}
+
+	issuer := strings.TrimSpace(os.Getenv("ENGRAM_OIDC_ISSUER"))
+	audience := strings.TrimSpace(os.Getenv("ENGRAM_OIDC_AUDIENCE"))
+	jwksURL := strings.TrimSpace(os.Getenv("ENGRAM_OIDC_JWKS_URL"))
+	requiredScope := strings.TrimSpace(os.Getenv("ENGRAM_OIDC_REQUIRED_SCOPE"))
+
+	verifier, err := auth.NewOIDCVerifier(auth.OIDCConfig{
+		IssuerURL:     issuer,
+		Audience:      audience,
+		JWKSURL:       jwksURL,
+		RequiredScope: requiredScope,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("configure OIDC verifier: %w", err)
+	}
+
+	resourcePath := strings.TrimSpace(os.Getenv("ENGRAM_OAUTH_RESOURCE_METADATA_PATH"))
+	if resourcePath == "" {
+		resourcePath = "/.well-known/oauth-protected-resource"
+	}
+	if !strings.HasPrefix(resourcePath, "/") {
+		resourcePath = "/" + resourcePath
+	}
+
+	mcpResource := strings.TrimSpace(os.Getenv("ENGRAM_OAUTH_RESOURCE"))
+	if mcpResource == "" {
+		mcpResource = buildPublicURL(host, port, mcpPath)
+	}
+
+	authServerRaw := strings.TrimSpace(os.Getenv("ENGRAM_OAUTH_AUTHORIZATION_SERVERS"))
+	authServers := []string{}
+	if authServerRaw != "" {
+		for _, item := range strings.Split(authServerRaw, ",") {
+			v := strings.TrimSpace(item)
+			if v != "" {
+				authServers = append(authServers, v)
+			}
+		}
+	}
+	if len(authServers) == 0 {
+		authServers = []string{issuer}
+	}
+
+	metadataBase := strings.TrimSpace(os.Getenv("ENGRAM_BASE_URL"))
+	if metadataBase == "" {
+		metadataBase = buildPublicURL(host, port, "")
+	}
+	metadataURL := strings.TrimRight(metadataBase, "/") + resourcePath
+
+	var scopes []string
+	if requiredScope != "" {
+		scopes = []string{requiredScope}
+	}
+	log.Printf("[engram] MCP OIDC auth enabled (issuer=%s, audience=%s)", issuer, audience)
+	return verifier, &mcpAuthConfig{
+		RequiredScope:        requiredScope,
+		ResourceMetadataPath: resourcePath,
+		ResourceMetadataURL:  metadataURL,
+		MCPResource:          mcpResource,
+		AuthorizationServers: authServers,
+		ScopesSupported:      scopes,
+	}, nil
+}
+
+func buildPublicURL(host string, port int, path string) string {
+	resolvedHost := strings.TrimSpace(host)
+	if resolvedHost == "" || resolvedHost == "0.0.0.0" || resolvedHost == "::" {
+		resolvedHost = "localhost"
+	}
+	if !strings.HasPrefix(path, "/") && path != "" {
+		path = "/" + path
+	}
+	return fmt.Sprintf("http://%s:%d%s", resolvedHost, port, path)
 }
 
 func cmdTUI(cfg store.Config) {
@@ -836,6 +968,18 @@ Environment:
   ENGRAM_DATABASE_URL PostgreSQL connection URL (required when driver=postgres)
   ENGRAM_PORT        Override HTTP server port (default: 7437)
   ENGRAM_HOST        HTTP bind host (default: 127.0.0.1)
+  ENGRAM_BASE_URL    Public base URL for metadata (e.g. https://mcp.company.com)
+  ENGRAM_MCP_TRANSPORT MCP transport in serve: http to enable, stdio to disable (default: stdio)
+  ENGRAM_MCP_HTTP_PATH MCP HTTP endpoint path (default: /mcp)
+  ENGRAM_MCP_TOOLS   MCP tool profile/filter (e.g. agent, admin, agent,admin)
+  ENGRAM_MCP_AUTH_ENABLED Enable JWT OIDC auth for MCP HTTP (true/false)
+  ENGRAM_OIDC_ISSUER OIDC issuer URL (required when auth enabled)
+  ENGRAM_OIDC_AUDIENCE OIDC audience (required when auth enabled)
+  ENGRAM_OIDC_JWKS_URL Optional JWKS URL override (otherwise discovered)
+  ENGRAM_OIDC_REQUIRED_SCOPE Optional required scope (e.g. engram.mcp)
+  ENGRAM_OAUTH_RESOURCE_METADATA_PATH OAuth protected resource metadata path
+  ENGRAM_OAUTH_RESOURCE  OAuth resource identifier (defaults to MCP URL)
+  ENGRAM_OAUTH_AUTHORIZATION_SERVERS Comma-separated auth server URLs for PRM
 
 MCP Configuration (add to your agent's config):
   {

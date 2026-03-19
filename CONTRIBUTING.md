@@ -88,11 +88,9 @@ All five checks must pass before a PR can be merged.
 
 ## PR Rules
 
-- Keep PR scope focused — one logical change per PR
-- Use [conventional commits](https://www.conventionalcommits.org/) format
-- Ensure all tests pass locally before pushing:
-  - Unit: `go test ./...`
-  - E2E: `go test -tags e2e ./internal/server/...`
+- Keep PR scope focused (one logical change)
+- Include validation evidence (`go test ./...`, targeted tests)
+- If charts change, include `helm lint charts/engram` output
 - Update docs in the same PR when behavior changes
 - Do not reference endpoints/scripts that do not exist in code
 - Do not include `Co-Authored-By` trailers in commits
