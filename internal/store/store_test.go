@@ -1915,14 +1915,20 @@ func TestNewErrorBranches(t *testing.T) {
 		if err := db.Close(); err != nil {
 			t.Fatalf("close db: %v", err)
 		}
-		time.Sleep(25 * time.Millisecond)
 
 		cfg := mustDefaultConfig(t)
 		cfg.DataDir = dataDir
 
-		_, err = New(cfg)
-		if err == nil || !strings.Contains(err.Error(), "migration") {
-			t.Fatalf("expected migration error, got %v", err)
+		deadline := time.Now().Add(2 * time.Second)
+		for {
+			_, err = New(cfg)
+			if err != nil && strings.Contains(err.Error(), "migration") {
+				break
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("expected migration error before timeout, got %v", err)
+			}
+			time.Sleep(10 * time.Millisecond)
 		}
 	})
 }

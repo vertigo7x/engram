@@ -42,7 +42,6 @@ type Server struct {
 	mux        *http.ServeMux
 	host       string
 	port       int
-	baseURL    string
 	listen     func(network, address string) (net.Listener, error)
 	serve      func(net.Listener, http.Handler) error
 	onWrite    func() // called after successful local writes (for autosync notification)
@@ -63,11 +62,6 @@ func (s *Server) SetHost(host string) {
 		return
 	}
 	s.host = host
-}
-
-// SetBaseURL configures external base URL used for auth metadata links.
-func (s *Server) SetBaseURL(baseURL string) {
-	s.baseURL = strings.TrimSpace(strings.TrimRight(baseURL, "/"))
 }
 
 // SetMCPHandler mounts an MCP HTTP handler at the given path.

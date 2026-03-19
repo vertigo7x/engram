@@ -172,7 +172,6 @@ func main() {
 func cmdServe(cfg store.Config) {
 	port := 7437 // "ENGR" on phone keypad vibes
 	host := "127.0.0.1"
-	baseURL := strings.TrimSpace(os.Getenv("ENGRAM_BASE_URL"))
 	if h := os.Getenv("ENGRAM_HOST"); h != "" {
 		host = h
 	}
@@ -205,14 +204,13 @@ func cmdServe(cfg store.Config) {
 
 	srv := newHTTPServer(s, port)
 	srv.SetHost(host)
-	srv.SetBaseURL(baseURL)
 
 	if mcpTransport == "http" {
 		var mcpSrv *mcpserver.MCPServer
 		if toolsFilter != "" {
 			mcpSrv = newMCPServerWithTools(s, resolveMCPTools(toolsFilter))
 		} else {
-			mcpSrv = newMCPServer(s)
+			mcpSrv = newMCPServerWithTools(s, resolveMCPTools("agent"))
 		}
 
 		mcpHandler := http.Handler(newMCPHTTPServer(mcpSrv, mcpserver.WithEndpointPath(mcpPath)))
