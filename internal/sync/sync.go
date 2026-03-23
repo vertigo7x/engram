@@ -16,7 +16,7 @@
 //	│   ├── a3f8c1d2.jsonl.gz ← chunk 1 (compressed)
 //	│   ├── b7d2e4f1.jsonl.gz ← chunk 2
 //	│   └── ...
-//	└── engram.db              ← local working DB (gitignored)
+//	└── chunks tracked by manifest while import state lives in PostgreSQL
 package sync
 
 import (

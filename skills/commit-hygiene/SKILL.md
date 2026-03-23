@@ -70,7 +70,7 @@ docs(contributing): update workflow documentation
 refactor(internal): extract search query sanitizer
 chore(deps): bump github.com/charmbracelet/bubbletea to v0.26
 style(tui): fix alignment in session detail view
-perf(store): optimize FTS5 query for large datasets
+perf(store): optimize text search query for large datasets
 test(sync): add coverage for conflict resolution
 ci(workflows): split e2e into separate job
 fix!: change session ID format

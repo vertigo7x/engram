@@ -31,7 +31,7 @@ Engram trusts the **agent** to decide what's worth remembering — not a firehos
    - title: "Fixed N+1 query in user list"
    - type: "bugfix"
    - content: What/Why/Where/Learned format
-3. Engram persists to SQLite with FTS5 indexing
+3. Engram persists to PostgreSQL
 4. Next session: agent searches memory, gets relevant context
 ```
 
@@ -57,7 +57,7 @@ Next session starts → Previous session context is injected automatically
 | `mem_update` | Update an existing observation by ID |
 | `mem_delete` | Delete an observation (soft-delete by default, hard-delete optional) |
 | `mem_suggest_topic_key` | Suggest a stable `topic_key` for evolving topics before saving |
-| `mem_search` | Full-text search across all memories |
+| `mem_search` | Text search across all memories |
 | `mem_session_summary` | Save end-of-session summary |
 | `mem_context` | Get recent context from previous sessions |
 | `mem_timeline` | Chronological context around a specific observation |
@@ -120,26 +120,16 @@ Different topics should use different keys (e.g. `architecture/auth-model` vs `b
 engram/
 ├── cmd/engram/main.go              # CLI entrypoint
 ├── internal/
-│   ├── store/store.go              # Core: SQLite + FTS5 + all data ops
+│   ├── store/store.go              # Core: PostgreSQL + all data ops
 │   ├── server/server.go            # HTTP REST API (port 7437)
-│   ├── mcp/mcp.go                  # MCP stdio server (13 tools)
-│   ├── setup/setup.go              # Agent plugin installer (go:embed)
+│   ├── mcp/mcp.go                  # MCP tool registry (13 tools)
 │   ├── sync/sync.go                # Git sync: manifest + compressed chunks
 │   └── tui/                        # Bubbletea terminal UI
 │       ├── model.go                # Screen constants, Model, Init()
 │       ├── styles.go               # Lipgloss styles (Catppuccin Mocha)
 │       ├── update.go               # Input handling, per-screen handlers
 │       └── view.go                 # Rendering, per-screen views
-├── plugin/
-│   ├── opencode/engram.ts          # OpenCode adapter plugin
-│   └── claude-code/                # Claude Code plugin (hooks + skill)
-│       ├── .claude-plugin/plugin.json
-│       ├── .mcp.json
-│       ├── hooks/hooks.json
-│       ├── scripts/                # session-start, post-compaction, subagent-stop, session-stop
-│       └── skills/memory/SKILL.md
 ├── skills/                         # Contributor AI skills (repo-wide standards + Engram-specific guardrails)
-├── setup.sh                        # Links repo skills into .claude/.codex/.gemini (project-local)
 ├── assets/                         # Screenshots and media
 ├── DOCS.md                         # Full technical documentation
 ├── CONTRIBUTING.md                 # Contribution workflow and standards
@@ -152,9 +142,8 @@ engram/
 ## CLI Reference
 
 ```
-engram setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex)
 engram serve [port]       Start HTTP API server (default: 7437)
-engram mcp                Start MCP server (stdio transport)
+engram serve [port]       Start HTTP API + MCP over HTTP
 engram tui                Launch interactive terminal UI
 engram search <query>     Search memories
 engram save <title> <msg> Save a memory

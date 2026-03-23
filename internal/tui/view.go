@@ -76,8 +76,6 @@ func (m Model) View() string {
 		content = m.viewSessions()
 	case ScreenSessionDetail:
 		content = m.viewSessionDetail()
-	case ScreenSetup:
-		content = m.viewSetup()
 	default:
 		content = "Unknown screen"
 	}
@@ -282,7 +280,7 @@ func (m Model) viewObservationDetail() string {
 
 	obs := m.SelectedObservation
 
-	header := fmt.Sprintf("  Observation #%d", obs.ID)
+	header := fmt.Sprintf("  Observation %s", obs.ID)
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
@@ -369,7 +367,7 @@ func (m Model) viewTimeline() string {
 	}
 
 	tl := m.Timeline
-	header := fmt.Sprintf("  Timeline — Observation #%d (%d total in session)", tl.Focus.ID, tl.TotalInRange)
+	header := fmt.Sprintf("  Timeline — Observation %s (%d total in session)", tl.Focus.ID, tl.TotalInRange)
 	b.WriteString(headerStyle.Render(header))
 	b.WriteString("\n")
 
@@ -389,7 +387,7 @@ func (m Model) viewTimeline() string {
 		for _, e := range tl.Before {
 			b.WriteString(fmt.Sprintf("  %s %s %s  %s\n",
 				timelineConnectorStyle.Render("│"),
-				idStyle.Render(fmt.Sprintf("#%-4d", e.ID)),
+				idStyle.Render(truncateStr(e.ID, 12)),
 				typeBadgeStyle.Render(fmt.Sprintf("[%-12s]", e.Type)),
 				timelineItemStyle.Render(truncateStr(e.Title, 60))))
 		}
@@ -398,7 +396,7 @@ func (m Model) viewTimeline() string {
 
 	// Focus (highlighted)
 	focusContent := fmt.Sprintf("  %s %s  %s\n  %s",
-		idStyle.Render(fmt.Sprintf("#%d", tl.Focus.ID)),
+		idStyle.Render(truncateStr(tl.Focus.ID, 12)),
 		typeBadgeStyle.Render("["+tl.Focus.Type+"]"),
 		lipgloss.NewStyle().Bold(true).Foreground(colorLavender).Render(tl.Focus.Title),
 		detailContentStyle.Render(truncateStr(tl.Focus.Content, 120)))
@@ -413,7 +411,7 @@ func (m Model) viewTimeline() string {
 		for _, e := range tl.After {
 			b.WriteString(fmt.Sprintf("  %s %s %s  %s\n",
 				timelineConnectorStyle.Render("│"),
-				idStyle.Render(fmt.Sprintf("#%-4d", e.ID)),
+				idStyle.Render(truncateStr(e.ID, 12)),
 				typeBadgeStyle.Render(fmt.Sprintf("[%-12s]", e.Type)),
 				timelineItemStyle.Render(truncateStr(e.Title, 60))))
 		}
@@ -546,128 +544,9 @@ func (m Model) viewSessionDetail() string {
 	return b.String()
 }
 
-// ─── Setup ───────────────────────────────────────────────────────────────────
-
-func (m Model) viewSetup() string {
-	var b strings.Builder
-
-	b.WriteString(headerStyle.Render("  Setup — Install Agent Plugin"))
-	b.WriteString("\n")
-
-	// Show spinner while installing
-	if m.SetupInstalling {
-		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("  %s Installing %s plugin...\n",
-			m.SetupSpinner.View(),
-			lipgloss.NewStyle().Bold(true).Foreground(colorLavender).Render(m.SetupInstallingName)))
-		b.WriteString("\n")
-
-		switch m.SetupInstallingName {
-		case "opencode":
-			b.WriteString(timestampStyle.Render("  Copying plugin file to plugins directory"))
-		case "claude-code":
-			b.WriteString(timestampStyle.Render("  Running claude plugin marketplace add + install"))
-		}
-
-		b.WriteString("\n")
-		return b.String()
-	}
-
-	// Show allowlist prompt after successful claude-code install
-	if m.SetupAllowlistPrompt && m.SetupResult != nil {
-		successMsg := fmt.Sprintf("Installed %s plugin", m.SetupResult.Agent)
-		b.WriteString(fmt.Sprintf("\n  %s %s\n\n",
-			lipgloss.NewStyle().Bold(true).Foreground(colorGreen).Render("✓"),
-			lipgloss.NewStyle().Bold(true).Foreground(colorGreen).Render(successMsg)))
-
-		b.WriteString(sectionHeadingStyle.Render("  Permissions Allowlist"))
-		b.WriteString("\n\n")
-		b.WriteString(detailContentStyle.Render("  Add engram tools to ~/.claude/settings.json allowlist?"))
-		b.WriteString("\n")
-		b.WriteString(timestampStyle.Render("  This prevents Claude Code from asking permission on every tool call."))
-		b.WriteString("\n\n")
-		b.WriteString(helpStyle.Render("  [y] Yes  [n] No"))
-		return b.String()
-	}
-
-	// Show result after install
-	if m.SetupDone {
-		if m.SetupError != "" {
-			b.WriteString(errorStyle.Render("  ✗ Installation failed: " + m.SetupError))
-			b.WriteString("\n\n")
-		} else if m.SetupResult != nil {
-			successMsg := fmt.Sprintf("Installed %s plugin", m.SetupResult.Agent)
-			if m.SetupResult.Files > 0 {
-				successMsg += fmt.Sprintf(" (%d files)", m.SetupResult.Files)
-			}
-			b.WriteString(fmt.Sprintf("  %s %s\n",
-				lipgloss.NewStyle().Bold(true).Foreground(colorGreen).Render("✓"),
-				lipgloss.NewStyle().Bold(true).Foreground(colorGreen).Render(successMsg)))
-			b.WriteString(fmt.Sprintf("  %s %s\n\n",
-				detailLabelStyle.Render("Location:"),
-				projectStyle.Render(m.SetupResult.Destination)))
-
-			// Post-install instructions
-			switch m.SetupResult.Agent {
-			case "opencode":
-				b.WriteString(sectionHeadingStyle.Render("  Next Steps"))
-				b.WriteString("\n")
-				b.WriteString(detailContentStyle.Render("1. Restart OpenCode"))
-				b.WriteString("\n")
-				b.WriteString(detailContentStyle.Render("2. Plugin is auto-loaded from ~/.config/opencode/plugins/"))
-				b.WriteString("\n")
-				b.WriteString(detailContentStyle.Render("3. Make sure 'engram' is in your MCP config (opencode.json)"))
-				b.WriteString("\n")
-			case "claude-code":
-				b.WriteString(sectionHeadingStyle.Render("  Next Steps"))
-				b.WriteString("\n")
-				if m.SetupAllowlistApplied {
-					b.WriteString(fmt.Sprintf("  %s %s\n",
-						lipgloss.NewStyle().Bold(true).Foreground(colorGreen).Render("✓"),
-						detailContentStyle.Render("Engram tools added to allowlist")))
-				} else if m.SetupAllowlistError != "" {
-					b.WriteString(fmt.Sprintf("  %s %s\n",
-						lipgloss.NewStyle().Bold(true).Foreground(colorRed).Render("✗"),
-						detailContentStyle.Render("Allowlist update failed: "+m.SetupAllowlistError)))
-					b.WriteString(detailContentStyle.Render("  Add manually to permissions.allow in ~/.claude/settings.json"))
-					b.WriteString("\n")
-				}
-				b.WriteString(detailContentStyle.Render("1. Restart Claude Code — the plugin is active immediately"))
-				b.WriteString("\n")
-				b.WriteString(detailContentStyle.Render("2. Verify with: claude plugin list"))
-				b.WriteString("\n")
-			}
-		}
-
-		b.WriteString(helpStyle.Render("\n  enter/esc back to dashboard"))
-		return b.String()
-	}
-
-	// Agent selection
-	b.WriteString("\n")
-	b.WriteString(titleStyle.Render("  Select an agent to set up"))
-	b.WriteString("\n\n")
-
-	for i, agent := range m.SetupAgents {
-		if i == m.Cursor {
-			b.WriteString(menuSelectedStyle.Render("▸ " + agent.Description))
-		} else {
-			b.WriteString(menuItemStyle.Render("  " + agent.Description))
-		}
-		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf("      %s %s\n\n",
-			detailLabelStyle.Render("Install to:"),
-			timestampStyle.Render(agent.InstallDir)))
-	}
-
-	b.WriteString(helpStyle.Render("\n  j/k navigate • enter install • esc back"))
-
-	return b.String()
-}
-
 // ─── Shared Renderers ────────────────────────────────────────────────────────
 
-func (m Model) renderObservationListItem(index int, id int64, obsType, title, content, createdAt string, project *string) string {
+func (m Model) renderObservationListItem(index int, id string, obsType, title, content, createdAt string, project *string) string {
 	cursor := "  "
 	style := listItemStyle
 	if index == m.Cursor {
@@ -682,7 +561,7 @@ func (m Model) renderObservationListItem(index int, id int64, obsType, title, co
 
 	line := fmt.Sprintf("%s%s %s %s%s  %s\n",
 		cursor,
-		idStyle.Render(fmt.Sprintf("#%-5d", id)),
+		idStyle.Render(truncateStr(id, 12)),
 		typeBadgeStyle.Render(fmt.Sprintf("[%-12s]", obsType)),
 		style.Render(truncateStr(title, 50)),
 		proj,
@@ -699,7 +578,7 @@ func (m Model) renderObservationListItem(index int, id int64, obsType, title, co
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-// localTime converts a UTC timestamp string from SQLite to local time for display.
+// localTime converts a UTC timestamp string to local time for display.
 func localTime(utc string) string {
 	for _, layout := range []string{
 		"2006-01-02 15:04:05",

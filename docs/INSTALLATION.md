@@ -60,7 +60,7 @@ go build -ldflags="-X main.version=local-$v" -o engram.exe ./cmd/engram
 ```
 
 > **Windows notes:**
-> - Data is stored in `%USERPROFILE%\.engram\engram.db`
+> - Engram requires `ENGRAM_DATABASE_URL` to point at PostgreSQL
 > - Override with `ENGRAM_DATA_DIR` environment variable
 > - All core features work natively: CLI, MCP server, TUI, HTTP API, Git Sync
 > - No WSL required for the core binary — it's a native Windows executable
@@ -98,9 +98,9 @@ Grab the latest release for your platform from [GitHub Releases](https://github.
 ## Requirements
 
 - **Go 1.25+** to build from source (not needed if installing via Homebrew or downloading a binary)
-- That's it. No runtime dependencies.
+- **PostgreSQL** reachable via `ENGRAM_DATABASE_URL`
 
-The binary includes SQLite (via [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) — pure Go, no CGO). Works natively on **macOS**, **Linux**, and **Windows** (x86_64 and ARM64).
+The binary works natively on **macOS**, **Linux**, and **Windows** (x86_64 and ARM64).
 
 ---
 
@@ -109,20 +109,20 @@ The binary includes SQLite (via [modernc.org/sqlite](https://pkg.go.dev/modernc.
 | Variable | Description | Default |
 |---|---|---|
 | `ENGRAM_DATA_DIR` | Data directory | `~/.engram` (Windows: `%USERPROFILE%\.engram`) |
+| `ENGRAM_DATABASE_URL` | PostgreSQL connection URL | empty |
 | `ENGRAM_PORT` | HTTP server port | `7437` |
 
 ---
 
 ## Windows Config Paths
 
-When using `engram setup`, config files are written to platform-appropriate locations:
+Common locations for manual MCP configuration:
 
 | Agent | macOS / Linux | Windows |
 |-------|---------------|---------|
-| OpenCode | `~/.config/opencode/` | `%APPDATA%\opencode\` |
-| Gemini CLI | `~/.gemini/` | `%APPDATA%\gemini\` |
-| Codex | `~/.codex/` | `%APPDATA%\codex\` |
-| Claude Code | Managed by `claude` CLI | Managed by `claude` CLI |
+| Gemini CLI | `~/.gemini/settings.json` | `%APPDATA%\gemini\settings.json` |
+| Codex | `~/.codex/config.toml` | `%APPDATA%\codex\config.toml` |
+| Claude Code | `~/.claude/settings.json` | `%APPDATA%\Claude\settings.json` |
 | VS Code | `.vscode/mcp.json` (workspace) or `~/Library/Application Support/Code/User/mcp.json` (user) | `.vscode\mcp.json` (workspace) or `%APPDATA%\Code\User\mcp.json` (user) |
 | Antigravity | `~/.gemini/antigravity/mcp_config.json` | `%USERPROFILE%\.gemini\antigravity\mcp_config.json` |
 | Data directory | `~/.engram/` | `%USERPROFILE%\.engram\` |

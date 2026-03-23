@@ -143,13 +143,6 @@ Why hybrid:
 
 ## Agent Skill Linking
 
-Run:
+Repository skills live in `skills/` and should be referenced directly from project instructions such as `AGENTS.md`, `CLAUDE.md`, or other agent-specific config.
 
-```bash
-./setup.sh
-```
-
-This links repo `skills/*` into project-local:
-- `.claude/skills/*`
-- `.codex/skills/*`
-- `.gemini/skills/*`
+Do not document or depend on a repo-local `setup.sh` linking flow unless that script exists in the repository.

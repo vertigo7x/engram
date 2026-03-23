@@ -2,8 +2,8 @@
 name: engram-architecture-guardrails
 description: >
   Architecture guardrails for Engram across local store, cloud sync, dashboard,
-  and plugins. Trigger: Any change that affects system boundaries, ownership,
-  state flow, or cross-package responsibilities.
+  and remote integrations. Trigger: Any change that affects system boundaries,
+  ownership, state flow, or cross-package responsibilities.
 license: Apache-2.0
 metadata:
   author: gentleman-programming
@@ -14,15 +14,15 @@ metadata:
 
 Use this skill when:
 - Adding a new subsystem or major package
-- Moving responsibilities between local store, cloud, dashboard, or plugins
+- Moving responsibilities between local store, cloud, dashboard, or remote integrations
 - Changing sync flow, source-of-truth rules, or persistence boundaries
 
 ---
 
 ## Core Guardrails
 
-1. Local SQLite is the source of truth; cloud is replication and shared access.
-2. Keep plugin/adaptor layers thin; real behavior belongs in Go packages.
+1. PostgreSQL is the source of truth; local and remote flows must preserve the same product story.
+2. Keep integration/adaptor layers thin; real behavior belongs in Go packages.
 3. Prefer explicit boundaries: store, cloudstore, server, dashboard, autosync.
 4. New features must fit the existing local-first mental model before they fit the UI.
 5. Do not hide cross-system coupling inside helpers or templates.

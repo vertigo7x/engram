@@ -2,8 +2,7 @@
 //
 // Usage:
 //
-//	engram serve          Start HTTP + MCP server
-//	engram mcp            Start MCP server only (stdio transport)
+//	engram serve          Start HTTP API + MCP over HTTP
 //	engram search <query> Search memories from CLI
 //	engram save           Save a memory from CLI
 //	engram context        Show recent context
@@ -26,13 +25,13 @@ import (
 	"github.com/Gentleman-Programming/engram/internal/auth"
 	"github.com/Gentleman-Programming/engram/internal/mcp"
 	"github.com/Gentleman-Programming/engram/internal/server"
-	"github.com/Gentleman-Programming/engram/internal/setup"
 	"github.com/Gentleman-Programming/engram/internal/store"
 	engramsync "github.com/Gentleman-Programming/engram/internal/sync"
 	"github.com/Gentleman-Programming/engram/internal/tui"
 	versioncheck "github.com/Gentleman-Programming/engram/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/google/uuid"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
@@ -45,10 +44,8 @@ var (
 	newHTTPServer = server.New
 	startHTTP     = (*server.Server).Start
 
-	newMCPServer          = mcp.NewServer
 	newMCPServerWithTools = mcp.NewServerWithTools
 	resolveMCPTools       = mcp.ResolveTools
-	serveMCP              = mcpserver.ServeStdio
 	newMCPHTTPServer      = mcpserver.NewStreamableHTTPServer
 
 	newTUIModel   = func(s *store.Store) tui.Model { return tui.New(s, version) }
@@ -57,16 +54,11 @@ var (
 
 	checkForUpdates = versioncheck.CheckLatest
 
-	setupSupportedAgents        = setup.SupportedAgents
-	setupInstallAgent           = setup.Install
-	setupAddClaudeCodeAllowlist = setup.AddClaudeCodeAllowlist
-	scanInputLine               = fmt.Scanln
-
 	storeSearch = func(s *store.Store, query string, opts store.SearchOptions) ([]store.SearchResult, error) {
 		return s.Search(query, opts)
 	}
-	storeAddObservation = func(s *store.Store, p store.AddObservationParams) (int64, error) { return s.AddObservation(p) }
-	storeTimeline       = func(s *store.Store, observationID int64, before, after int) (*store.TimelineResult, error) {
+	storeAddObservation = func(s *store.Store, p store.AddObservationParams) (string, error) { return s.AddObservation(p) }
+	storeTimeline       = func(s *store.Store, observationID string, before, after int) (*store.TimelineResult, error) {
 		return s.Timeline(observationID, before, after)
 	}
 	storeFormatContext = func(s *store.Store, project, scope string) (string, error) { return s.FormatContext(project, scope) }
@@ -118,24 +110,13 @@ func main() {
 		cfg.DataDir = dir
 	}
 
-	if driver := os.Getenv("ENGRAM_DB_DRIVER"); driver != "" {
-		cfg.Driver = strings.ToLower(strings.TrimSpace(driver))
-	}
 	if dbURL := os.Getenv("ENGRAM_DATABASE_URL"); dbURL != "" {
 		cfg.DatabaseURL = dbURL
-	}
-
-	// Migrate orphaned local SQLite databases that ended up in wrong locations
-	// (e.g. drive root on Windows due to previous bug).
-	if cfg.Driver == "" || cfg.Driver == "sqlite" {
-		migrateOrphanedDB(cfg.DataDir)
 	}
 
 	switch os.Args[1] {
 	case "serve":
 		cmdServe(cfg)
-	case "mcp":
-		cmdMCP(cfg)
 	case "tui":
 		cmdTUI(cfg)
 	case "search":
@@ -154,8 +135,6 @@ func main() {
 		cmdImport(cfg)
 	case "sync":
 		cmdSync(cfg)
-	case "setup":
-		cmdSetup()
 	case "version", "--version", "-v":
 		fmt.Printf("engram %s\n", version)
 	case "help", "--help", "-h":
@@ -180,10 +159,6 @@ func cmdServe(cfg store.Config) {
 			port = n
 		}
 	}
-	mcpTransport := strings.ToLower(strings.TrimSpace(os.Getenv("ENGRAM_MCP_TRANSPORT")))
-	if mcpTransport == "" {
-		mcpTransport = "stdio"
-	}
 	mcpPath := strings.TrimSpace(os.Getenv("ENGRAM_MCP_HTTP_PATH"))
 	if mcpPath == "" {
 		mcpPath = "/mcp"
@@ -202,37 +177,35 @@ func cmdServe(cfg store.Config) {
 	}
 	defer s.Close()
 
-	srv := newHTTPServer(s, port)
+	srv := newHTTPServer(s, port, version)
 	srv.SetHost(host)
 
-	if mcpTransport == "http" {
-		var mcpSrv *mcpserver.MCPServer
-		if toolsFilter != "" {
-			mcpSrv = newMCPServerWithTools(s, resolveMCPTools(toolsFilter))
-		} else {
-			mcpSrv = newMCPServerWithTools(s, resolveMCPTools("agent"))
-		}
-
-		mcpHandler := http.Handler(newMCPHTTPServer(mcpSrv, mcpserver.WithEndpointPath(mcpPath)))
-		verifier, authCfg, err := buildOIDCVerifierFromEnv(host, port, mcpPath)
-		if err != nil {
-			fatal(err)
-		} else if verifier != nil {
-			srv.SetMCPHandler(authCfg.ResourceMetadataPath, auth.ProtectedResourceMetadataHandler(auth.OAuthProtectedResourceMetadata{
-				Resource:             authCfg.MCPResource,
-				AuthorizationServers: authCfg.AuthorizationServers,
-				ScopesSupported:      authCfg.ScopesSupported,
-			}))
-			mcpHandler = auth.Middleware(verifier, auth.MiddlewareConfig{
-				Realm:               "mcp",
-				ResourceMetadataURL: authCfg.ResourceMetadataURL,
-				RequiredScope:       authCfg.RequiredScope,
-			})(mcpHandler)
-		}
-
-		srv.SetMCPHandler(mcpPath, mcpHandler)
-		log.Printf("[engram] MCP HTTP transport enabled on %s", mcpPath)
+	var mcpSrv *mcpserver.MCPServer
+	if toolsFilter != "" {
+		mcpSrv = newMCPServerWithTools(s, resolveMCPTools(toolsFilter))
+	} else {
+		mcpSrv = newMCPServerWithTools(s, resolveMCPTools("agent"))
 	}
+
+	mcpHandler := http.Handler(newMCPHTTPServer(mcpSrv, mcpserver.WithEndpointPath(mcpPath)))
+	verifier, authCfg, err := buildOIDCVerifierFromEnv(host, port, mcpPath)
+	if err != nil {
+		fatal(err)
+	} else if verifier != nil {
+		srv.SetMCPHandler(authCfg.ResourceMetadataPath, auth.ProtectedResourceMetadataHandler(auth.OAuthProtectedResourceMetadata{
+			Resource:             authCfg.MCPResource,
+			AuthorizationServers: authCfg.AuthorizationServers,
+			ScopesSupported:      authCfg.ScopesSupported,
+		}))
+		mcpHandler = auth.Middleware(verifier, auth.MiddlewareConfig{
+			Realm:               "mcp",
+			ResourceMetadataURL: authCfg.ResourceMetadataURL,
+			RequiredScope:       authCfg.RequiredScope,
+		})(mcpHandler)
+	}
+
+	srv.SetMCPHandler(mcpPath, mcpHandler)
+	log.Printf("[engram] MCP HTTP transport enabled on %s", mcpPath)
 
 	// Graceful shutdown on SIGINT/SIGTERM.
 	sigCh := make(chan os.Signal, 1)
@@ -244,37 +217,6 @@ func cmdServe(cfg store.Config) {
 	}()
 
 	if err := startHTTP(srv); err != nil {
-		fatal(err)
-	}
-}
-
-func cmdMCP(cfg store.Config) {
-	// Parse --tools flag: engram mcp --tools=agent
-	toolsFilter := ""
-	for i := 2; i < len(os.Args); i++ {
-		if strings.HasPrefix(os.Args[i], "--tools=") {
-			toolsFilter = strings.TrimPrefix(os.Args[i], "--tools=")
-		} else if os.Args[i] == "--tools" && i+1 < len(os.Args) {
-			toolsFilter = os.Args[i+1]
-			i++
-		}
-	}
-
-	s, err := storeNew(cfg)
-	if err != nil {
-		fatal(err)
-	}
-	defer s.Close()
-
-	var mcpSrv *mcpserver.MCPServer
-	if toolsFilter != "" {
-		allowlist := resolveMCPTools(toolsFilter)
-		mcpSrv = newMCPServerWithTools(s, allowlist)
-	} else {
-		mcpSrv = newMCPServer(s)
-	}
-
-	if err := serveMCP(mcpSrv); err != nil {
 		fatal(err)
 	}
 }
@@ -451,7 +393,7 @@ func cmdSearch(cfg store.Config) {
 		if r.Project != nil {
 			project = fmt.Sprintf(" | project: %s", *r.Project)
 		}
-		fmt.Printf("[%d] #%d (%s) — %s\n    %s\n    %s%s | scope: %s\n\n",
+		fmt.Printf("[%d] %s (%s) — %s\n    %s\n    %s%s | scope: %s\n\n",
 			i+1, r.ID, r.Type, r.Title,
 			truncate(r.Content, 300),
 			r.CreatedAt, project, r.Scope)
@@ -506,9 +448,9 @@ func cmdSave(cfg store.Config) {
 	if project != "" {
 		sessionID = "manual-save-" + project
 	}
-	s.CreateSession(sessionID, project, "")
+	_ = s.CreateSession(store.CreateSessionParams{ClientSessionID: sessionID, Project: project, Directory: ""})
 	id, err := storeAddObservation(s, store.AddObservationParams{
-		SessionID: sessionID,
+		SessionID: store.CreateSessionParams{ClientSessionID: sessionID, Project: project}.EffectiveID(),
 		Type:      typ,
 		Title:     title,
 		Content:   content,
@@ -520,7 +462,7 @@ func cmdSave(cfg store.Config) {
 		fatal(err)
 	}
 
-	fmt.Printf("Memory saved: #%d %q (%s)\n", id, title, typ)
+	fmt.Printf("Memory saved: %s %q (%s)\n", id, title, typ)
 }
 
 func cmdTimeline(cfg store.Config) {
@@ -529,8 +471,8 @@ func cmdTimeline(cfg store.Config) {
 		exitFunc(1)
 	}
 
-	obsID, err := strconv.ParseInt(os.Args[2], 10, 64)
-	if err != nil {
+	obsID := strings.TrimSpace(os.Args[2])
+	if obsID == "" || !validObservationID(strings.TrimSpace(os.Args[2])) {
 		fmt.Fprintf(os.Stderr, "error: invalid observation id %q\n", os.Args[2])
 		exitFunc(1)
 	}
@@ -580,13 +522,13 @@ func cmdTimeline(cfg store.Config) {
 	if len(result.Before) > 0 {
 		fmt.Println("─── Before ───")
 		for _, e := range result.Before {
-			fmt.Printf("  #%d [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
+			fmt.Printf("  %s [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
 		}
 		fmt.Println()
 	}
 
 	// Focus
-	fmt.Printf(">>> #%d [%s] %s <<<\n", result.Focus.ID, result.Focus.Type, result.Focus.Title)
+	fmt.Printf(">>> %s [%s] %s <<<\n", result.Focus.ID, result.Focus.Type, result.Focus.Title)
 	fmt.Printf("    %s\n", truncate(result.Focus.Content, 500))
 	fmt.Printf("    %s\n\n", result.Focus.CreatedAt)
 
@@ -594,7 +536,7 @@ func cmdTimeline(cfg store.Config) {
 	if len(result.After) > 0 {
 		fmt.Println("─── After ───")
 		for _, e := range result.After {
-			fmt.Printf("  #%d [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
+			fmt.Printf("  %s [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
 		}
 	}
 }
@@ -658,11 +600,7 @@ func cmdStats(cfg store.Config) {
 	fmt.Printf("  Observations: %d\n", stats.TotalObservations)
 	fmt.Printf("  Prompts:      %d\n", stats.TotalPrompts)
 	fmt.Printf("  Projects:     %s\n", projects)
-	if cfg.Driver == "postgres" {
-		fmt.Printf("  Database:     postgres (ENGRAM_DATABASE_URL)\n")
-	} else {
-		fmt.Printf("  Database:     %s/engram.db\n", cfg.DataDir)
-	}
+	fmt.Printf("  Database:     postgres (ENGRAM_DATABASE_URL)\n")
 }
 
 func cmdExport(cfg store.Config) {
@@ -838,96 +776,6 @@ func cmdSync(cfg store.Config) {
 	fmt.Printf("  git add .engram/ && git commit -m \"sync engram memories\"\n")
 }
 
-func cmdSetup() {
-	agents := setupSupportedAgents()
-
-	// If agent name given directly: engram setup opencode
-	if len(os.Args) > 2 && !strings.HasPrefix(os.Args[2], "-") {
-		result, err := setupInstallAgent(os.Args[2])
-		if err != nil {
-			fatal(err)
-		}
-		fmt.Printf("✓ Installed %s plugin (%d files)\n", result.Agent, result.Files)
-		fmt.Printf("  → %s\n", result.Destination)
-		printPostInstall(result.Agent)
-		return
-	}
-
-	// Interactive selection
-	fmt.Println("engram setup — Install agent plugin")
-	fmt.Println()
-	fmt.Println("Which agent do you want to set up?")
-	fmt.Println()
-
-	for i, a := range agents {
-		fmt.Printf("  [%d] %s\n", i+1, a.Description)
-		fmt.Printf("      Install to: %s\n\n", a.InstallDir)
-	}
-
-	fmt.Print("Enter choice (1-", len(agents), "): ")
-	var input string
-	scanInputLine(&input)
-
-	choice, err := strconv.Atoi(strings.TrimSpace(input))
-	if err != nil || choice < 1 || choice > len(agents) {
-		fmt.Fprintln(os.Stderr, "Invalid choice.")
-		exitFunc(1)
-	}
-
-	selected := agents[choice-1]
-	fmt.Printf("\nInstalling %s plugin...\n", selected.Name)
-
-	result, err := setupInstallAgent(selected.Name)
-	if err != nil {
-		fatal(err)
-	}
-
-	fmt.Printf("✓ Installed %s plugin (%d files)\n", result.Agent, result.Files)
-	fmt.Printf("  → %s\n", result.Destination)
-	printPostInstall(result.Agent)
-}
-
-func printPostInstall(agent string) {
-	switch agent {
-	case "opencode":
-		fmt.Println("\nNext steps:")
-		fmt.Println("  1. Restart OpenCode — plugin + MCP server are ready")
-		fmt.Println("  2. Run 'engram serve &' for session tracking (HTTP API)")
-	case "claude-code":
-		// Offer to add engram tools to the permissions allowlist
-		fmt.Print("\nAdd engram tools to ~/.claude/settings.json allowlist?\n")
-		fmt.Print("This prevents Claude Code from asking permission on every tool call.\n")
-		fmt.Print("Add to allowlist? (y/N): ")
-		var answer string
-		scanInputLine(&answer)
-		answer = strings.TrimSpace(strings.ToLower(answer))
-		if answer == "y" || answer == "yes" {
-			if err := setupAddClaudeCodeAllowlist(); err != nil {
-				fmt.Fprintf(os.Stderr, "  warning: could not update allowlist: %v\n", err)
-				fmt.Fprintln(os.Stderr, "  You can add them manually to permissions.allow in ~/.claude/settings.json")
-			} else {
-				fmt.Println("  ✓ Engram tools added to allowlist")
-			}
-		} else {
-			fmt.Println("  Skipped. You can add them later to permissions.allow in ~/.claude/settings.json")
-		}
-
-		fmt.Println("\nNext steps:")
-		fmt.Println("  1. Restart Claude Code — the plugin is active immediately")
-		fmt.Println("  2. Verify with: claude plugin list")
-	case "gemini-cli":
-		fmt.Println("\nNext steps:")
-		fmt.Println("  1. Restart Gemini CLI so MCP config is reloaded")
-		fmt.Println("  2. Verify ~/.gemini/settings.json includes mcpServers.engram")
-		fmt.Println("  3. Verify ~/.gemini/system.md + ~/.gemini/.env exist for compaction recovery")
-	case "codex":
-		fmt.Println("\nNext steps:")
-		fmt.Println("  1. Restart Codex so MCP config is reloaded")
-		fmt.Println("  2. Verify ~/.codex/config.toml has [mcp_servers.engram]")
-		fmt.Println("  3. Verify model_instructions_file + experimental_compact_prompt_file are set")
-	}
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 func printUsage() {
@@ -937,11 +785,10 @@ Usage:
   engram <command> [arguments]
 
 Commands:
-  serve [port]       Start HTTP API server (default: 7437)
-  mcp [--tools=PROFILE] Start MCP server (stdio transport, for any AI agent)
+  serve [port]       Start HTTP API server + MCP over HTTP (default: 7437)
+                       Configure MCP with ENGRAM_MCP_HTTP_PATH and ENGRAM_MCP_TOOLS
                        Profiles: agent (11 tools), admin (3 tools), all (default, 14)
-                       Combine: --tools=agent,admin or pick individual tools
-                       Example: engram mcp --tools=agent
+                       Combine: ENGRAM_MCP_TOOLS=agent,admin or pick individual tools
   tui                Launch interactive terminal UI
   search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
   save <title> <msg> Save a memory  [--type TYPE] [--project PROJECT] [--scope SCOPE]
@@ -950,7 +797,6 @@ Commands:
   stats              Show memory system statistics
   export [file]      Export all memories to JSON (default: engram-export.json)
   import <file>      Import memories from a JSON export file
-  setup [agent]      Install/setup agent integration (opencode, claude-code, gemini-cli, codex)
   sync               Export new memories as compressed chunk to .engram/
                        --import   Import new chunks from .engram/ into local DB
                        --status   Show sync status (local vs remote chunks)
@@ -962,12 +808,11 @@ Commands:
 
 Environment:
   ENGRAM_DATA_DIR    Override data directory (default: ~/.engram)
-  ENGRAM_DB_DRIVER   Database driver (sqlite or postgres; default: sqlite)
-  ENGRAM_DATABASE_URL PostgreSQL connection URL (required when driver=postgres)
+  ENGRAM_DATABASE_URL PostgreSQL connection URL (required)
   ENGRAM_PORT        Override HTTP server port (default: 7437)
   ENGRAM_HOST        HTTP bind host (default: 127.0.0.1)
   ENGRAM_BASE_URL    Public base URL for metadata (e.g. https://mcp.company.com)
-  ENGRAM_MCP_TRANSPORT MCP transport in serve: http to enable, stdio to disable (default: stdio)
+  ENGRAM_MCP_URL     Explicit MCP URL for generated agent configs/examples
   ENGRAM_MCP_HTTP_PATH MCP HTTP endpoint path (default: /mcp)
   ENGRAM_MCP_TOOLS   MCP tool profile/filter (e.g. agent, admin, agent,admin)
   ENGRAM_MCP_AUTH_ENABLED Enable JWT OIDC auth for MCP HTTP (true/false)
@@ -983,9 +828,8 @@ MCP Configuration (add to your agent's config):
   {
     "mcp": {
       "engram": {
-        "type": "stdio",
-        "command": "engram",
-        "args": ["mcp", "--tools=agent"]
+        "type": "remote",
+        "url": "https://your-engram-host/mcp"
       }
     }
   }
@@ -1024,79 +868,19 @@ func resolveHomeFallback() string {
 
 	return ""
 }
-
-// migrateOrphanedDB checks for engram databases that ended up in wrong
-// locations (e.g. drive root on Windows when UserHomeDir failed silently)
-// and moves them to the correct location if the correct location has no DB.
-func migrateOrphanedDB(correctDir string) {
-	correctDB := filepath.Join(correctDir, "engram.db")
-
-	// If the correct DB already exists, nothing to migrate.
-	if _, err := os.Stat(correctDB); err == nil {
-		return
-	}
-
-	// Known wrong locations: relative ".engram" resolved from common roots.
-	// On Windows this typically ends up at C:\.engram or D:\.engram.
-	candidates := []string{
-		filepath.Join(string(filepath.Separator), ".engram", "engram.db"),
-	}
-
-	// On Windows, check all drive letter roots.
-	if filepath.Separator == '\\' {
-		for _, drive := range "CDEFGHIJ" {
-			candidates = append(candidates,
-				filepath.Join(string(drive)+":\\", ".engram", "engram.db"),
-			)
-		}
-	}
-
-	for _, candidate := range candidates {
-		if candidate == correctDB {
-			continue
-		}
-		info, err := os.Stat(candidate)
-		if err != nil || info.IsDir() {
-			continue
-		}
-
-		// Found an orphaned DB — migrate it.
-		log.Printf("[engram] found orphaned database at %s, migrating to %s", candidate, correctDB)
-
-		if err := os.MkdirAll(correctDir, 0755); err != nil {
-			log.Printf("[engram] migration failed (create dir): %v", err)
-			return
-		}
-
-		// Move DB and WAL/SHM files if they exist.
-		for _, suffix := range []string{"", "-wal", "-shm"} {
-			src := candidate + suffix
-			dst := correctDB + suffix
-			if _, statErr := os.Stat(src); statErr != nil {
-				continue
-			}
-			if renameErr := os.Rename(src, dst); renameErr != nil {
-				log.Printf("[engram] migration failed (move %s): %v", filepath.Base(src), renameErr)
-				return
-			}
-		}
-
-		// Clean up empty orphaned directory.
-		orphanDir := filepath.Dir(candidate)
-		entries, _ := os.ReadDir(orphanDir)
-		if len(entries) == 0 {
-			os.Remove(orphanDir)
-		}
-
-		log.Printf("[engram] migration complete — memories recovered")
-		return
-	}
-}
-
 func truncate(s string, max int) string {
 	runes := []rune(s)
 	if len(runes) <= max {
 		return s
 	}
 	return string(runes[:max]) + "..."
+}
+
+func validObservationID(id string) bool {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "" || trimmed != id {
+		return false
+	}
+	_, err := uuid.Parse(trimmed)
+	return err == nil
 }

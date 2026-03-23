@@ -6,9 +6,9 @@
 
 ## What is Engram?
 
-An agent-agnostic persistent memory system. A Go binary with relational storage (SQLite by default, PostgreSQL optional), exposed via CLI, HTTP API, and MCP server. Thin adapter plugins connect it to specific agents (OpenCode, Claude Code, Cursor, Windsurf, etc.).
+An agent-agnostic persistent memory system. A Go binary backed by PostgreSQL, exposed via CLI and HTTP API, including MCP over HTTP for remote and team-oriented use.
 
-**Why Go?** Single binary, cross-platform, no runtime dependencies. Uses `modernc.org/sqlite` (pure Go, no CGO) and optional PostgreSQL via `github.com/lib/pq`.
+**Why Go?** Single binary, cross-platform, no runtime dependencies. Uses PostgreSQL via `github.com/lib/pq` and serves CLI, HTTP, MCP, and TUI flows from one binary.
 
 - **Module**: `github.com/Gentleman-Programming/engram`
 - **Version**: 0.1.0
@@ -17,21 +17,21 @@ An agent-agnostic persistent memory system. A Go binary with relational storage 
 
 ## Architecture
 
-The Go binary is the brain. Thin adapter plugins per-agent talk to it via HTTP or MCP stdio.
+The Go binary is the brain. Agents talk to it via HTTP, including MCP over HTTP.
 
 ```
-Agent (OpenCode/Claude Code/Cursor/etc.)
-    ↓ (plugin or MCP)
+Agent (Claude Code/Cursor/Gemini/Codex/VS Code/etc.)
+    ↓ MCP over HTTP
 Engram Go Binary / Service
     ↓
-Relational DB (SQLite default / PostgreSQL optional)
+PostgreSQL (`ENGRAM_DATABASE_URL`)
 ```
 
 Six interfaces:
 
 1. **CLI** — Direct terminal usage (`engram search`, `engram save`, etc.)
-2. **HTTP API** — REST API on port 7437 for plugins and integrations
-3. **MCP Server** — stdio transport for any MCP-compatible agent
+2. **HTTP API** — REST API on port 7437 for integrations and automation
+3. **MCP Server** — HTTP transport for any MCP-compatible agent
 4. **TUI** — Interactive terminal UI for browsing memories (`engram tui`)
 
 ---
@@ -42,9 +42,9 @@ Six interfaces:
 engram/
 ├── cmd/engram/main.go              # CLI entrypoint — all commands
 ├── internal/
-│   ├── store/store.go              # Core data layer: SQLite/PostgreSQL + search + sync journal
+│   ├── store/store.go              # Core data layer: PostgreSQL + search + sync journal
 │   ├── server/server.go            # HTTP REST API server (port 7437)
-│   ├── mcp/mcp.go                  # MCP stdio server (13 tools)
+│   ├── mcp/mcp.go                  # MCP tool registry (13 tools)
 │   ├── sync/sync.go                # Git sync: manifest + chunks (gzipped JSONL)
 │   └── tui/                        # Bubbletea terminal UI
 │       ├── model.go                # Screen constants, Model struct, Init(), custom messages
@@ -66,30 +66,23 @@ engram/
 
 ### Tables
 
-- **sessions** — `id` (TEXT PK), `project`, `directory`, `started_at`, `ended_at`, `summary`, `status`
-- **observations** — `id` (INTEGER PK AUTOINCREMENT), `session_id` (FK), `type`, `title`, `content`, `tool_name`, `project`, `scope`, `topic_key`, `normalized_hash`, `revision_count`, `duplicate_count`, `last_seen_at`, `created_at`, `updated_at`, `deleted_at`
-- **observations_fts** — FTS5 virtual table synced via triggers (`title`, `content`, `tool_name`, `type`, `project`)
-- **user_prompts** — `id` (INTEGER PK AUTOINCREMENT), `session_id` (FK), `content`, `project`, `created_at`
-- **prompts_fts** — FTS5 virtual table synced via triggers (`content`, `project`)
+- **sessions** — `id` (UUID PK, deterministic effective session id), `client_session_id`, `project`, `directory`, `auth_issuer`, `auth_subject`, `auth_username`, `auth_email`, `started_at`, `ended_at`, `summary`, `status`
+- **observations** — `id` (UUID PK), `session_id` (FK), `sync_id` (UUID), `type`, `title`, `content`, `tool_name`, `project`, `scope`, `topic_key`, `normalized_hash`, `revision_count`, `duplicate_count`, `last_seen_at`, `created_at`, `updated_at`, `deleted_at`
+- **user_prompts** — `id` (UUID PK), `session_id` (FK), `sync_id` (UUID), `content`, `project`, `created_at`
 - **sync_chunks** — `chunk_id` (TEXT PK), `imported_at` — tracks which chunks have been imported to prevent duplicates
 
-### SQLite Configuration
+### PostgreSQL Configuration
 
-- WAL mode for concurrent reads
-- Busy timeout 5000ms
-- Synchronous NORMAL
-- Foreign keys ON
-
-### PostgreSQL Mode
-
-- Set `ENGRAM_DB_DRIVER=postgres`
 - Set `ENGRAM_DATABASE_URL=postgres://...`
-- Uses compatibility rewrites for SQL placeholders/functions
-- Uses `ILIKE` search fallback (SQLite keeps FTS5 virtual tables)
+- `ENGRAM_DB_DRIVER` is deprecated and ignored; configure `ENGRAM_DATABASE_URL` instead
+- Search uses PostgreSQL `ILIKE` queries today
+- `sessions.id` is deterministic:
+  - authenticated: derived from `iss + sub + client_session_id`
+  - unauthenticated: derived from raw `client_session_id`
 
 ### MCP HTTP Transport
 
-- `engram serve` can expose MCP over HTTP when `ENGRAM_MCP_TRANSPORT=http`
+- `engram serve` exposes MCP over HTTP by default
 - Endpoint path is configured with `ENGRAM_MCP_HTTP_PATH` (default `/mcp`)
 - Tool profile/filter is configured with `ENGRAM_MCP_TOOLS` (for example `agent`, `admin`, or `agent,admin`)
 
@@ -112,7 +105,7 @@ engram/
 
 ```
 engram serve [port]       Start HTTP API server (default: 7437)
-engram mcp                Start MCP server (stdio transport)
+engram serve [port]       Start HTTP API + MCP over HTTP (default: 7437)
 engram tui                Launch interactive terminal UI
 engram search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
 engram save <title> <msg> Save a memory [--type TYPE] [--project PROJECT] [--scope SCOPE] [--topic TOPIC_KEY]
@@ -131,11 +124,10 @@ engram help               Show help
 | Variable | Description | Default |
 |---|---|---|
 | `ENGRAM_DATA_DIR` | Override data directory | `~/.engram` |
-| `ENGRAM_DB_DRIVER` | Database driver (`sqlite` or `postgres`) | `sqlite` |
-| `ENGRAM_DATABASE_URL` | PostgreSQL connection URL (required when driver is `postgres`) | empty |
+| `ENGRAM_DATABASE_URL` | PostgreSQL connection URL (required) | empty |
 | `ENGRAM_HOST` | HTTP bind host | `127.0.0.1` |
 | `ENGRAM_PORT` | Override HTTP server port | `7437` |
-| `ENGRAM_MCP_TRANSPORT` | MCP transport in `engram serve` (`http` to enable) | `stdio` |
+| `ENGRAM_MCP_URL` | Explicit MCP URL used by generated agent configs | empty |
 | `ENGRAM_MCP_HTTP_PATH` | MCP HTTP endpoint path | `/mcp` |
 | `ENGRAM_MCP_TOOLS` | MCP tool profile/filter | `agent` |
 | `ENGRAM_MCP_AUTH_ENABLED` | Enable OIDC JWT auth for MCP HTTP | `false` |
@@ -157,12 +149,7 @@ engram help               Show help
 ```bash
 docker build -t engram:local .
 
-# SQLite mode
-docker run --rm -p 7437:7437 -v engram-data:/data engram:local
-
-# PostgreSQL mode
 docker run --rm -p 7437:7437 \
-  -e ENGRAM_DB_DRIVER=postgres \
   -e ENGRAM_DATABASE_URL="postgres://user:pass@postgres:5432/engram?sslmode=disable" \
   engram:local
 ```
@@ -174,9 +161,7 @@ Chart location: `charts/engram`
 ```bash
 helm install engram ./charts/engram
 
-# PostgreSQL mode
 helm install engram ./charts/engram \
-  --set database.driver=postgres \
   --set database.url="postgres://user:pass@postgres:5432/engram?sslmode=disable"
 ```
 
@@ -198,17 +183,16 @@ kubectl create secret generic engram-db \
   -n engram
 
 helm upgrade --install engram ./charts/engram -n engram \
-  --set database.driver=postgres \
   --set database.existingSecret=engram-db \
   --set database.urlSecretKey=ENGRAM_DATABASE_URL
 ```
 
 ### Keycloak Provider Setup (Local Example)
 
-Reference setup for OpenCode + remote MCP HTTP:
+Reference setup for remote MCP HTTP:
 
 1. Keycloak realm (example: `Shared`).
-2. OpenCode OAuth client (example: `engram-local`):
+2. MCP OAuth client (example: `engram-local`):
    - Standard Flow enabled
    - PKCE S256 enabled
    - Redirect URIs:
@@ -221,7 +205,6 @@ Reference setup for OpenCode + remote MCP HTTP:
 Engram env alignment example:
 
 ```bash
-ENGRAM_MCP_TRANSPORT=http
 ENGRAM_MCP_AUTH_ENABLED=true
 ENGRAM_OIDC_ISSUER=http://localhost:28080/realms/Shared
 ENGRAM_OIDC_AUDIENCE=engram-mcp
@@ -231,7 +214,7 @@ ENGRAM_OAUTH_RESOURCE=http://localhost:7437/mcp
 ENGRAM_OAUTH_AUTHORIZATION_SERVERS=http://localhost:28080/realms/Shared
 ```
 
-OpenCode config snippet:
+Example client config snippet:
 
 ```json
 {
@@ -254,8 +237,7 @@ Debug commands:
 
 ```bash
 curl -i http://localhost:7437/.well-known/oauth-protected-resource
-opencode mcp auth engram_remote
-opencode mcp debug engram_remote
+# Replace with your client's auth/debug commands if supported
 ```
 
 ---
@@ -306,7 +288,7 @@ Built with [Bubbletea](https://github.com/charmbracelet/bubbletea) v1, [Lipgloss
 | Screen | Description |
 |---|---|
 | **Dashboard** | Stats overview (sessions, observations, prompts, projects) + menu |
-| **Search** | FTS5 text search with text input |
+| **Search** | Case-insensitive text search with text input |
 | **Search Results** | Browsable results list from search |
 | **Recent Observations** | Browse all observations, newest first |
 | **Observation Detail** | Full content of a single observation, scrollable |
@@ -357,13 +339,13 @@ All endpoints return JSON. Server listens on `127.0.0.1:7437`.
 
 ### Sessions
 
-- `POST /sessions` — Create session. Body: `{id, project, directory}`
+- `POST /sessions` — Create session. Body: `{id, project, directory}` where `id` is the client-provided session id; the response returns the effective stored session id.
 - `POST /sessions/{id}/end` — End session. Body: `{summary}`
 - `GET /sessions/recent` — Recent sessions. Query: `?project=X&limit=N`
 
 ### Observations
 
-- `POST /observations` — Add observation. Body: `{session_id, type, title, content, tool_name?, project?, scope?, topic_key?}`
+- `POST /observations` — Add observation. Body: `{session_id, type, title, content, tool_name?, project?, scope?, topic_key?}` where `session_id` is the effective stored session id returned by session creation.
 - `GET /observations/recent` — Recent observations. Query: `?project=X&scope=project|personal&limit=N`
 - `GET /observations/{id}` — Get single observation by ID
 - `PATCH /observations/{id}` — Update fields. Body: `{title?, content?, type?, project?, scope?, topic_key?}`
@@ -371,7 +353,7 @@ All endpoints return JSON. Server listens on `127.0.0.1:7437`.
 
 ### Search
 
-- `GET /search` — FTS5 search. Query: `?q=QUERY&type=TYPE&project=PROJECT&scope=SCOPE&limit=N`
+- `GET /search` — Text search. Query: `?q=QUERY&type=TYPE&project=PROJECT&scope=SCOPE&limit=N`
 
 ### Timeline
 
@@ -379,7 +361,7 @@ All endpoints return JSON. Server listens on `127.0.0.1:7437`.
 
 ### Prompts
 
-- `POST /prompts` — Save user prompt. Body: `{session_id, content, project?}`
+- `POST /prompts` — Save user prompt. Body: `{session_id, content, project?}` where `session_id` is the effective stored session id returned by session creation.
 - `GET /prompts/recent` — Recent prompts. Query: `?project=X&limit=N`
 - `GET /prompts/search` — Search prompts. Query: `?q=QUERY&project=X&limit=N`
 
@@ -405,7 +387,7 @@ All endpoints return JSON. Server listens on `127.0.0.1:7437`.
 
 ### mem_search
 
-Search persistent memory across all sessions. Supports FTS5 full-text search with type/project/scope/limit filters.
+Search persistent memory across all sessions. Supports text search with type/project/scope/limit filters.
 
 ### mem_save
 
@@ -482,13 +464,16 @@ Add to any agent's config:
 {
   "mcp": {
     "engram": {
-      "type": "stdio",
-      "command": "engram",
-      "args": ["mcp"]
+      "type": "remote",
+      "url": "https://your-engram-host/mcp"
     }
   }
 }
 ```
+
+For local-only setups, `http://127.0.0.1:7437/mcp` is still valid. For team/shared deployments, use your public Engram URL.
+
+
 
 ---
 
@@ -530,7 +515,7 @@ Format for `mem_save`:
 
 When the user asks to recall something — any variation of "remember", "recall", "what did we do", "how did we solve", "recordar", "acordate", "qué hicimos", or references to past work:
 1. First call `mem_context` — checks recent session history (fast, cheap)
-2. If not found, call `mem_search` with relevant keywords (FTS5 full-text search)
+2. If not found, call `mem_search` with relevant keywords
 3. If you find a match, use `mem_get_observation` for full untruncated content
 
 Also search memory PROACTIVELY when:
@@ -590,10 +575,9 @@ Do not skip step 1. Without it, everything done before compaction is lost from m
 
 ## Features
 
-### 1. Full-Text Search (FTS5)
+### 1. Search
 
 - Searches across title, content, tool_name, type, and project
-- Query sanitization: wraps each word in quotes to avoid FTS5 syntax errors
 - Supports type and project filters
 
 ### 2. Timeline (Progressive Disclosure)
@@ -608,14 +592,14 @@ Three-layer pattern for token-efficient memory retrieval:
 
 `<private>...</private>` content is stripped at TWO levels:
 
-1. **Plugin layer** (TypeScript) — Strips before data leaves the process
+1. **Agent/input layer** — clients should avoid sending secrets in the first place
 2. **Store layer** (Go) — `stripPrivateTags()` runs inside `AddObservation()` and `AddPrompt()`
 
 Example: `Set up API with <private>sk-abc123</private>` becomes `Set up API with [REDACTED]`
 
 ### 4. User Prompt Storage
 
-Separate table captures what the USER asked (not just tool calls). Gives future sessions the "why" behind the "what". Full FTS5 search support.
+Separate table captures what the USER asked (not just tool calls). Gives future sessions the "why" behind the "what" and participates in prompt search.
 
 ### 5. Export / Import
 
@@ -642,7 +626,7 @@ Share memories through git repositories using compressed chunks with a manifest 
 │   ├── a3f8c1d2.jsonl.gz ← chunk 1 (gzipped JSONL)
 │   ├── b7d2e4f1.jsonl.gz ← chunk 2
 │   └── ...
-└── engram.db              ← local working DB (gitignored)
+└── chunks/metadata tracked in PostgreSQL import state
 ```
 
 **Why chunks?**
@@ -652,7 +636,7 @@ Share memories through git repositories using compressed chunks with a manifest 
 - The manifest is the only file git diffs — it's small and append-only
 - Compressed: a chunk with 8 sessions + 10 observations = ~2KB
 
-**Auto-import**: The OpenCode plugin detects `.engram/manifest.json` at startup and runs `engram sync --import` to load any new chunks. Clone a repo → open OpenCode → team memories are loaded.
+**Import flow**: Any client or team workflow can run `engram sync --import` to load new chunks from `.engram/manifest.json` into the local database.
 
 **Tracking**: The local DB stores a `sync_chunks` table with chunk IDs that have been imported. This prevents re-importing the same data if `sync --import` runs multiple times.
 
@@ -671,7 +655,7 @@ Instead of a separate LLM service, the agent itself compresses observations. The
   **Learned**: [gotchas, decisions]
   ```
 
-- **Session summary** (`mem_session_summary`): OpenCode-style comprehensive summary
+- **Session summary** (`mem_session_summary`): Comprehensive structured summary
 
   ```
   ## Goal
@@ -681,77 +665,30 @@ Instead of a separate LLM service, the agent itself compresses observations. The
   ## Relevant Files
   ```
 
-The OpenCode plugin injects the **Memory Protocol** via system prompt to teach agents both formats, plus strict rules about when to save and a mandatory session close protocol.
+The recommended setup is to add the **Memory Protocol** to your agent instructions so it learns both formats, plus strict rules about when to save and a mandatory session close protocol.
 
 ### 8. No Raw Auto-Capture (Agent-Only Memory)
 
-The OpenCode plugin does NOT auto-capture raw tool calls. All memory comes from the agent itself:
+Engram does NOT auto-capture raw tool calls. All memory comes from the agent itself:
 
 - **`mem_save`** — Agent saves structured observations after significant work (decisions, bugfixes, patterns)
 - **`mem_session_summary`** — Agent saves comprehensive end-of-session summaries
 
-**Why?** Raw tool calls (`edit: {file: "foo.go"}`, `bash: {command: "go build"}`) are noisy and pollute FTS5 search results. The agent's curated summaries are higher signal, more searchable, and don't bloat the database. Shell history and git provide the raw audit trail.
+**Why?** Raw tool calls (`edit: {file: "foo.go"}`, `bash: {command: "go build"}`) are noisy and pollute search results. The agent's curated summaries are higher signal, more searchable, and don't bloat the database. Shell history and git provide the raw audit trail.
 
-The plugin still counts tool calls per session (for session end summary stats) but doesn't persist them as observations.
-
----
-
-## OpenCode Plugin
-
-Install with `engram setup opencode` — this copies the plugin to `~/.config/opencode/plugins/engram.ts` AND auto-registers the MCP server in `opencode.json`.
-
-A thin TypeScript adapter that:
-
-1. **Auto-starts** the engram binary if not running
-2. **Auto-imports** git-synced memories from `.engram/memories.json` if present in the project
-3. **Captures events**: `session.created`, `session.idle`, `session.deleted`, `message.updated`
-4. **Tracks tool count**: Counts tool calls per session (for session end stats), but does NOT persist raw tool observations
-5. **Captures user prompts**: From `message.updated` events (>10 chars)
-6. **Injects Memory Protocol**: Strict rules for when to save, when to search, and mandatory session close protocol — via `chat.system.transform`
-7. **Injects context on compaction**: Auto-saves checkpoint + injects previous session context + reminds compressor
-8. **Privacy**: Strips `<private>` tags before sending to HTTP API
-
-### Session Resilience
-
-The plugin uses `ensureSession()` — an idempotent function that creates the session in engram if it doesn't exist yet. This is called from every hook that receives a `sessionID`, not just `session.created`. This means:
-
-- **Plugin reload**: If OpenCode restarts or the plugin is reloaded mid-session, the session is re-created on the next tool call or compaction event
-- **Reconnect**: If you reconnect to an existing session, the session is created on-demand
-- **No lost data**: Prompts, tool counts, and compaction context all work even if `session.created` was missed
-
-Session IDs come from OpenCode's hook inputs (`input.sessionID` in `tool.execute.after`, `input.sessionID` in `experimental.session.compacting`) rather than from a fragile in-memory Map populated by events.
-
-### Plugin API Types (OpenCode `@opencode-ai/plugin`)
-
-The `tool.execute.after` hook receives:
-- **`input`**: `{ tool, sessionID, callID, args }` — `input.sessionID` identifies the OpenCode session
-- **`output`**: `{ title, output, metadata }` — `output.output` has the result string
-
-### ENGRAM_TOOLS (excluded from tool count)
-
-`mem_search`, `mem_save`, `mem_update`, `mem_delete`, `mem_suggest_topic_key`, `mem_save_prompt`, `mem_session_summary`, `mem_context`, `mem_stats`, `mem_timeline`, `mem_get_observation`, `mem_session_start`, `mem_session_end`
-
----
 
 ## Dependencies
 
 ### Go
 
 - `github.com/mark3labs/mcp-go v0.44.0` — MCP protocol implementation
-- `modernc.org/sqlite v1.45.0` — Pure Go SQLite driver (no CGO)
 - `github.com/charmbracelet/bubbletea v1.3.10` — Terminal UI framework
 - `github.com/charmbracelet/lipgloss v1.1.0` — Terminal styling
 - `github.com/charmbracelet/bubbles v1.0.0` — TUI components (textinput, etc.)
-- `github.com/lib/pq` — Postgres driver (for cloud server)
+- `github.com/lib/pq` — PostgreSQL driver
 - `github.com/golang-jwt/jwt/v5` — JWT token generation and validation (for cloud auth)
 - `golang.org/x/crypto` — bcrypt password hashing (for cloud auth)
 
-### OpenCode Plugin
-
-- `@opencode-ai/plugin` — OpenCode plugin types and helpers
-- Runtime: Bun (built into OpenCode)
-
----
 
 ## Installation
 
@@ -768,20 +705,20 @@ go install ./cmd/engram
 
 After `go install`: `$GOPATH/bin/engram` (typically `~/go/bin/engram`)
 
-### Data location
+### Database requirement
 
-`~/.engram/engram.db` (SQLite database, created on first run)
+Set `ENGRAM_DATABASE_URL` before running Engram.
 
 ---
 
 ## Design Decisions
 
 1. **Go over TypeScript** — Single binary, cross-platform, no runtime. The initial prototype was TS but was rewritten.
-2. **SQLite + FTS5 over vector DB** — FTS5 covers 95% of use cases. No ChromaDB/Pinecone complexity.
-3. **Agent-agnostic core** — Go binary is the brain, thin plugins per-agent. Not locked to any agent.
+2. **PostgreSQL over multi-store complexity** — one operational database keeps CLI, HTTP, MCP, and sync flows on the same source of truth.
+3. **Agent-agnostic core** — Go binary is the brain, exposed via standard HTTP and MCP HTTP. Not locked to any agent.
 4. **Agent-driven compression** — The agent already has an LLM. No separate compression service.
-5. **Privacy at two layers** — Strip in plugin AND store. Defense in depth.
-6. **Pure Go SQLite (modernc.org/sqlite)** — No CGO means true cross-platform binary distribution.
+5. **Privacy at the store boundary** — Strip private tags before persistence.
+6. **Remote-first MCP over HTTP** — one transport works for local development and shared team deployments.
 7. **No raw auto-capture** — Raw tool calls (edit, bash, etc.) are noisy, pollute search results, and bloat the database. The agent saves curated summaries via `mem_save` and `mem_session_summary` instead. Shell history and git provide the raw audit trail.
 8. **TUI with Bubbletea** — Interactive terminal UI for browsing memories without leaving the terminal. Follows Gentleman Bubbletea patterns (screen constants, single Model struct, vim keys).
 
@@ -795,6 +732,12 @@ Key differences from claude-mem:
 
 - Agent-agnostic (not locked to Claude Code)
 - Go binary (not Node.js/TypeScript)
-- FTS5 instead of ChromaDB
+- PostgreSQL-backed search instead of a separate vector store
 - Agent-driven compression instead of separate LLM calls
 - Simpler architecture (single binary, embedded web dashboard)
+### Session Identity
+
+- Clients send a `client_session_id` when creating or using a session.
+- Engram derives the stored session primary key from `issuer + subject + client_session_id` when authenticated.
+- This prevents different users from colliding on weak client ids like `manual-save`.
+- In unauthenticated flows, the effective session id is deterministically derived from the client-provided session id.

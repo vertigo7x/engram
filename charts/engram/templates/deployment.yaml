@@ -29,10 +29,6 @@ spec:
               value: "0.0.0.0"
             - name: ENGRAM_PORT
               value: {{ .Values.service.port | quote }}
-            - name: ENGRAM_DB_DRIVER
-              value: {{ .Values.database.driver | quote }}
-            - name: ENGRAM_MCP_TRANSPORT
-              value: {{ .Values.mcp.transport | quote }}
             - name: ENGRAM_MCP_HTTP_PATH
               value: {{ .Values.mcp.httpPath | quote }}
             - name: ENGRAM_MCP_TOOLS

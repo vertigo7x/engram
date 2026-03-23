@@ -10,9 +10,9 @@
      -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}'
 
 4. Key variables:
-   - ENGRAM_DB_DRIVER={{ .Values.database.driver }}
-   - ENGRAM_DATABASE_URL (if driver=postgres)
-   - ENGRAM_MCP_TRANSPORT={{ .Values.mcp.transport }}
+   - ENGRAM_DATABASE_URL
+   - ENGRAM_MCP_HTTP_PATH={{ .Values.mcp.httpPath }}
+   - ENGRAM_MCP_TOOLS={{ .Values.mcp.tools }}
    - ENGRAM_MCP_AUTH_ENABLED={{ .Values.mcp.auth.enabled }}
    - ENGRAM_BASE_URL={{ default "<set me>" .Values.mcp.baseUrl }}
 

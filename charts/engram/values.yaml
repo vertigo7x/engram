@@ -21,14 +21,12 @@ ingress:
   tls: []
 
 database:
-  driver: sqlite
   url: ""
   existingSecret: ""
   urlSecretKey: ENGRAM_DATABASE_URL
   createSecret: false
 
 mcp:
-  transport: http
   httpPath: /mcp
   tools: agent
   baseUrl: ""
