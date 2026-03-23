@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/testutil"
 )
 
 type stubListener struct{}
@@ -22,7 +23,7 @@ func (stubListener) Close() error              { return nil }
 func (stubListener) Addr() net.Addr            { return &net.TCPAddr{} }
 
 func TestStartReturnsListenError(t *testing.T) {
-	s := New(nil, 7777)
+	s := New(nil, 7777, "test-version")
 	s.listen = func(network, address string) (net.Listener, error) {
 		return nil, errors.New("listen failed")
 	}
@@ -34,7 +35,7 @@ func TestStartReturnsListenError(t *testing.T) {
 }
 
 func TestStartUsesInjectedServe(t *testing.T) {
-	s := New(&store.Store{}, 7777)
+	s := New(&store.Store{}, 7777, "test-version")
 	s.listen = func(network, address string) (net.Listener, error) {
 		return stubListener{}, nil
 	}
@@ -57,7 +58,7 @@ func newServerTestStore(t *testing.T) *store.Store {
 	if err != nil {
 		t.Fatalf("DefaultConfig: %v", err)
 	}
-	cfg.DataDir = t.TempDir()
+	cfg.DatabaseURL = testutil.NewPostgresURL(t)
 
 	s, err := store.New(cfg)
 	if err != nil {
@@ -70,7 +71,7 @@ func newServerTestStore(t *testing.T) *store.Store {
 }
 
 func TestStartUsesDefaultListenWhenListenNil(t *testing.T) {
-	s := New(newServerTestStore(t), 0)
+	s := New(newServerTestStore(t), 0, "test-version")
 	s.listen = nil
 	s.serve = func(ln net.Listener, h http.Handler) error {
 		if ln == nil || h == nil {
@@ -87,7 +88,7 @@ func TestStartUsesDefaultListenWhenListenNil(t *testing.T) {
 }
 
 func TestStartUsesDefaultServeWhenServeNil(t *testing.T) {
-	s := New(newServerTestStore(t), 7777)
+	s := New(newServerTestStore(t), 7777, "test-version")
 	s.listen = func(network, address string) (net.Listener, error) {
 		return stubListener{}, nil
 	}
@@ -101,7 +102,7 @@ func TestStartUsesDefaultServeWhenServeNil(t *testing.T) {
 
 func TestAdditionalServerErrorBranches(t *testing.T) {
 	st := newServerTestStore(t)
-	srv := New(st, 0)
+	srv := New(st, 0, "test-version")
 	h := srv.Handler()
 
 	createReq := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader(`{"id":"s-test","project":"engram"}`))
@@ -112,14 +113,14 @@ func TestAdditionalServerErrorBranches(t *testing.T) {
 		t.Fatalf("expected session create 201, got %d", createRec.Code)
 	}
 
-	getBadIDReq := httptest.NewRequest(http.MethodGet, "/observations/not-a-number", nil)
+	getBadIDReq := httptest.NewRequest(http.MethodGet, "/observations/!", nil)
 	getBadIDRec := httptest.NewRecorder()
 	h.ServeHTTP(getBadIDRec, getBadIDReq)
 	if getBadIDRec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 for invalid observation id, got %d", getBadIDRec.Code)
 	}
 
-	updateNotFoundReq := httptest.NewRequest(http.MethodPatch, "/observations/99999", strings.NewReader(`{"title":"updated"}`))
+	updateNotFoundReq := httptest.NewRequest(http.MethodPatch, "/observations/11111111-1111-1111-1111-111111111111", strings.NewReader(`{"title":"updated"}`))
 	updateNotFoundReq.Header.Set("Content-Type", "application/json")
 	updateNotFoundRec := httptest.NewRecorder()
 	h.ServeHTTP(updateNotFoundRec, updateNotFoundReq)
@@ -173,7 +174,7 @@ func (s *stubSyncStatusProvider) Status() SyncStatus {
 }
 
 func TestSyncStatusNotConfigured(t *testing.T) {
-	srv := New(newServerTestStore(t), 0)
+	srv := New(newServerTestStore(t), 0, "test-version")
 	// No sync status provider set — should return enabled: false.
 	req := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
 	rec := httptest.NewRecorder()
@@ -201,7 +202,7 @@ func TestSyncStatusHealthy(t *testing.T) {
 		},
 	}
 
-	srv := New(newServerTestStore(t), 0)
+	srv := New(newServerTestStore(t), 0, "test-version")
 	srv.SetSyncStatus(provider)
 
 	req := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
@@ -235,7 +236,7 @@ func TestSyncStatusDegraded(t *testing.T) {
 		},
 	}
 
-	srv := New(newServerTestStore(t), 0)
+	srv := New(newServerTestStore(t), 0, "test-version")
 	srv.SetSyncStatus(provider)
 
 	req := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
@@ -265,7 +266,7 @@ func TestSyncStatusDegraded(t *testing.T) {
 
 func TestOnWriteCalledAfterSuccessfulWrites(t *testing.T) {
 	st := newServerTestStore(t)
-	srv := New(st, 0)
+	srv := New(st, 0, "test-version")
 	h := srv.Handler()
 
 	var writeCount atomic.Int32
@@ -300,7 +301,12 @@ func TestOnWriteCalledAfterSuccessfulWrites(t *testing.T) {
 	}
 
 	// Add observation → should trigger onWrite.
-	obsBody := `{"session_id":"s-test","type":"test","title":"Test","content":"test content"}`
+	var createResp map[string]string
+	if err := json.NewDecoder(createRec.Body).Decode(&createResp); err != nil {
+		t.Fatalf("decode create session response: %v", err)
+	}
+	effectiveSessionID := createResp["id"]
+	obsBody := `{"session_id":"` + effectiveSessionID + `","type":"test","title":"Test","content":"test content"}`
 	obsReq := httptest.NewRequest(http.MethodPost, "/observations",
 		strings.NewReader(obsBody))
 	obsReq.Header.Set("Content-Type", "application/json")
@@ -314,7 +320,7 @@ func TestOnWriteCalledAfterSuccessfulWrites(t *testing.T) {
 	}
 
 	// Add prompt → should trigger onWrite.
-	promptBody := `{"session_id":"s-test","content":"what did we do?"}`
+	promptBody := `{"session_id":"` + effectiveSessionID + `","content":"what did we do?"}`
 	promptReq := httptest.NewRequest(http.MethodPost, "/prompts",
 		strings.NewReader(promptBody))
 	promptReq.Header.Set("Content-Type", "application/json")
@@ -330,7 +336,7 @@ func TestOnWriteCalledAfterSuccessfulWrites(t *testing.T) {
 
 func TestOnWriteNotCalledOnReadOperations(t *testing.T) {
 	st := newServerTestStore(t)
-	srv := New(st, 0)
+	srv := New(st, 0, "test-version")
 	h := srv.Handler()
 
 	var writeCount atomic.Int32
@@ -344,6 +350,13 @@ func TestOnWriteNotCalledOnReadOperations(t *testing.T) {
 	h.ServeHTTP(healthRec, healthReq)
 	if healthRec.Code != http.StatusOK {
 		t.Fatalf("health: expected 200, got %d", healthRec.Code)
+	}
+	var health map[string]any
+	if err := json.NewDecoder(healthRec.Body).Decode(&health); err != nil {
+		t.Fatalf("decode health json: %v", err)
+	}
+	if health["version"] != "test-version" {
+		t.Fatalf("expected health version test-version, got %v", health["version"])
 	}
 
 	// GET /stats → read-only, no onWrite.
@@ -363,7 +376,7 @@ func TestOnWriteNotCalledOnReadOperations(t *testing.T) {
 
 func TestOnWriteNotCalledOnFailedWrites(t *testing.T) {
 	st := newServerTestStore(t)
-	srv := New(st, 0)
+	srv := New(st, 0, "test-version")
 	h := srv.Handler()
 
 	var writeCount atomic.Int32
@@ -405,7 +418,7 @@ func TestHandleStatsReturnsInternalServerErrorOnLoaderError(t *testing.T) {
 		loadServerStats = prev
 	})
 
-	s := New(newServerTestStore(t), 0)
+	s := New(newServerTestStore(t), 0, "test-version")
 	req := httptest.NewRequest(http.MethodGet, "/stats", nil)
 	rec := httptest.NewRecorder()
 

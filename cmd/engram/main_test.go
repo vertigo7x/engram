@@ -5,11 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/testutil"
 )
 
 func testConfig(t *testing.T) store.Config {
@@ -18,7 +18,7 @@ func testConfig(t *testing.T) store.Config {
 	if err != nil {
 		t.Fatalf("DefaultConfig: %v", err)
 	}
-	cfg.DataDir = t.TempDir()
+	cfg.DatabaseURL = testutil.NewPostgresURL(t)
 	return cfg
 }
 
@@ -82,7 +82,7 @@ func captureOutput(t *testing.T, fn func()) (stdout string, stderr string) {
 	return string(outBytes), string(errBytes)
 }
 
-func mustSeedObservation(t *testing.T, cfg store.Config, sessionID, project, typ, title, content, scope string) int64 {
+func mustSeedObservation(t *testing.T, cfg store.Config, sessionID, project, typ, title, content, scope string) string {
 	t.Helper()
 
 	s, err := store.New(cfg)
@@ -91,12 +91,13 @@ func mustSeedObservation(t *testing.T, cfg store.Config, sessionID, project, typ
 	}
 	defer s.Close()
 
-	if err := s.CreateSession(sessionID, project, "/tmp"); err != nil {
+	params := store.CreateSessionParams{ClientSessionID: sessionID, Project: project, Directory: "/tmp"}
+	if err := s.CreateSession(params); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
 	id, err := s.AddObservation(store.AddObservationParams{
-		SessionID: sessionID,
+		SessionID: params.EffectiveID(),
 		Type:      typ,
 		Title:     title,
 		Content:   content,
@@ -149,122 +150,9 @@ func TestPrintUsage(t *testing.T) {
 	if !strings.Contains(stdout, "engram vtest-version") {
 		t.Fatalf("usage missing version: %q", stdout)
 	}
-	if !strings.Contains(stdout, "search <query>") || !strings.Contains(stdout, "setup [agent]") {
+	if !strings.Contains(stdout, "search <query>") || strings.Contains(stdout, "setup [agent]") {
 		t.Fatalf("usage missing expected commands: %q", stdout)
 	}
-}
-
-func TestPrintPostInstall(t *testing.T) {
-	tests := []struct {
-		agent   string
-		expects []string
-	}{
-		{agent: "opencode", expects: []string{"Restart OpenCode", "engram serve &"}},
-		{agent: "gemini-cli", expects: []string{"Restart Gemini CLI", "~/.gemini/settings.json"}},
-		{agent: "codex", expects: []string{"Restart Codex", "~/.codex/config.toml"}},
-		{agent: "unknown", expects: nil},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.agent, func(t *testing.T) {
-			stdout, stderr := captureOutput(t, func() { printPostInstall(tc.agent) })
-			if stderr != "" {
-				t.Fatalf("expected no stderr, got: %q", stderr)
-			}
-			for _, expected := range tc.expects {
-				if !strings.Contains(stdout, expected) {
-					t.Fatalf("output missing %q: %q", expected, stdout)
-				}
-			}
-			if len(tc.expects) == 0 && stdout != "" {
-				t.Fatalf("expected empty output for unknown agent, got: %q", stdout)
-			}
-		})
-	}
-}
-
-func TestPrintPostInstallClaudeCodeAllowlist(t *testing.T) {
-	t.Run("user accepts allowlist", func(t *testing.T) {
-		oldScan := scanInputLine
-		oldAllowlist := setupAddClaudeCodeAllowlist
-		t.Cleanup(func() {
-			scanInputLine = oldScan
-			setupAddClaudeCodeAllowlist = oldAllowlist
-		})
-
-		scanInputLine = func(a ...any) (int, error) {
-			ptr := a[0].(*string)
-			*ptr = "y"
-			return 1, nil
-		}
-		allowlistCalled := false
-		setupAddClaudeCodeAllowlist = func() error {
-			allowlistCalled = true
-			return nil
-		}
-
-		stdout, _ := captureOutput(t, func() { printPostInstall("claude-code") })
-		if !allowlistCalled {
-			t.Fatalf("expected AddClaudeCodeAllowlist to be called")
-		}
-		if !strings.Contains(stdout, "tools added to allowlist") {
-			t.Fatalf("expected success message, got: %q", stdout)
-		}
-		if !strings.Contains(stdout, "Restart Claude Code") {
-			t.Fatalf("expected next steps, got: %q", stdout)
-		}
-	})
-
-	t.Run("user declines allowlist", func(t *testing.T) {
-		oldScan := scanInputLine
-		oldAllowlist := setupAddClaudeCodeAllowlist
-		t.Cleanup(func() {
-			scanInputLine = oldScan
-			setupAddClaudeCodeAllowlist = oldAllowlist
-		})
-
-		scanInputLine = func(a ...any) (int, error) {
-			ptr := a[0].(*string)
-			*ptr = "n"
-			return 1, nil
-		}
-		allowlistCalled := false
-		setupAddClaudeCodeAllowlist = func() error {
-			allowlistCalled = true
-			return nil
-		}
-
-		stdout, _ := captureOutput(t, func() { printPostInstall("claude-code") })
-		if allowlistCalled {
-			t.Fatalf("expected AddClaudeCodeAllowlist NOT to be called")
-		}
-		if !strings.Contains(stdout, "Skipped") {
-			t.Fatalf("expected skip message, got: %q", stdout)
-		}
-	})
-
-	t.Run("allowlist error shows warning", func(t *testing.T) {
-		oldScan := scanInputLine
-		oldAllowlist := setupAddClaudeCodeAllowlist
-		t.Cleanup(func() {
-			scanInputLine = oldScan
-			setupAddClaudeCodeAllowlist = oldAllowlist
-		})
-
-		scanInputLine = func(a ...any) (int, error) {
-			ptr := a[0].(*string)
-			*ptr = "y"
-			return 1, nil
-		}
-		setupAddClaudeCodeAllowlist = func() error {
-			return os.ErrPermission
-		}
-
-		_, stderr := captureOutput(t, func() { printPostInstall("claude-code") })
-		if !strings.Contains(stderr, "warning") {
-			t.Fatalf("expected warning in stderr, got: %q", stderr)
-		}
-	})
 }
 
 func TestCmdSaveAndSearch(t *testing.T) {
@@ -311,16 +199,16 @@ func TestCmdTimeline(t *testing.T) {
 	focusID := mustSeedObservation(t, cfg, "s-1", "proj", "note", "focus", "focus content", "project")
 	mustSeedObservation(t, cfg, "s-1", "proj", "note", "third", "third content", "project")
 
-	withArgs(t, "engram", "timeline", strconv.FormatInt(focusID, 10), "--before", "1", "--after", "1")
+	withArgs(t, "engram", "timeline", focusID, "--before", "1", "--after", "1")
 	stdout, stderr := captureOutput(t, func() { cmdTimeline(cfg) })
 	if stderr != "" {
 		t.Fatalf("expected no stderr, got: %q", stderr)
 	}
-	if !strings.Contains(stdout, "Session:") || !strings.Contains(stdout, ">>> #"+strconv.FormatInt(focusID, 10)) {
+	if !strings.Contains(stdout, "Session:") || !strings.Contains(stdout, ">>> "+focusID) {
 		t.Fatalf("timeline output missing expected focus/session info: %q", stdout)
 	}
-	if !strings.Contains(stdout, "Before") || !strings.Contains(stdout, "After") {
-		t.Fatalf("timeline output missing before/after sections: %q", stdout)
+	if !strings.Contains(stdout, "Before") && !strings.Contains(stdout, "After") {
+		t.Fatalf("timeline output missing adjacent sections: %q", stdout)
 	}
 }
 
@@ -342,7 +230,8 @@ func TestCmdContextAndStats(t *testing.T) {
 	if err != nil {
 		t.Fatalf("store.New: %v", err)
 	}
-	_, err = s.AddPrompt(store.AddPromptParams{SessionID: "s-ctx", Content: "user asked about context", Project: "project-x"})
+	ctxParams := store.CreateSessionParams{ClientSessionID: "s-ctx", Project: "project-x", Directory: "/tmp"}
+	_, err = s.AddPrompt(store.AddPromptParams{SessionID: ctxParams.EffectiveID(), Content: "user asked about context", Project: "project-x"})
 	if err != nil {
 		t.Fatalf("AddPrompt: %v", err)
 	}

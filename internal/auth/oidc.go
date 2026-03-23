@@ -373,3 +373,19 @@ func Middleware(verifier *OIDCVerifier, cfg MiddlewareConfig) func(http.Handler)
 		})
 	}
 }
+
+func ClaimsFromContext(ctx context.Context) jwt.MapClaims {
+	if ctx == nil {
+		return nil
+	}
+	claims, _ := ctx.Value(ClaimsContextKey).(jwt.MapClaims)
+	return claims
+}
+
+func StringClaim(claims jwt.MapClaims, key string) string {
+	if claims == nil {
+		return ""
+	}
+	v, _ := claims[key].(string)
+	return strings.TrimSpace(v)
+}

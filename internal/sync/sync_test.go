@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/testutil"
 )
 
 func newTestStore(t *testing.T) *store.Store {
@@ -21,7 +22,7 @@ func newTestStore(t *testing.T) *store.Store {
 	if err != nil {
 		t.Fatalf("DefaultConfig: %v", err)
 	}
-	cfg.DataDir = t.TempDir()
+	cfg.DatabaseURL = testutil.NewPostgresURL(t)
 
 	s, err := store.New(cfg)
 	if err != nil {
@@ -36,15 +37,17 @@ func newTestStore(t *testing.T) *store.Store {
 func seedStoreForSync(t *testing.T, s *store.Store) {
 	t.Helper()
 
-	if err := s.CreateSession("s-proj", "proj-a", "/tmp/proj-a"); err != nil {
+	projParams := store.CreateSessionParams{ClientSessionID: "s-proj", Project: "proj-a", Directory: "/tmp/proj-a"}
+	if err := s.CreateSession(projParams); err != nil {
 		t.Fatalf("create session proj-a: %v", err)
 	}
-	if err := s.CreateSession("s-other", "proj-b", "/tmp/proj-b"); err != nil {
+	otherParams := store.CreateSessionParams{ClientSessionID: "s-other", Project: "proj-b", Directory: "/tmp/proj-b"}
+	if err := s.CreateSession(otherParams); err != nil {
 		t.Fatalf("create session proj-b: %v", err)
 	}
 
 	if _, err := s.AddObservation(store.AddObservationParams{
-		SessionID: "s-proj",
+		SessionID: projParams.EffectiveID(),
 		Type:      "decision",
 		Title:     "project observation",
 		Content:   "project scoped content",
@@ -55,7 +58,7 @@ func seedStoreForSync(t *testing.T, s *store.Store) {
 	}
 
 	if _, err := s.AddObservation(store.AddObservationParams{
-		SessionID: "s-other",
+		SessionID: otherParams.EffectiveID(),
 		Type:      "decision",
 		Title:     "other observation",
 		Content:   "other scoped content",
@@ -65,10 +68,10 @@ func seedStoreForSync(t *testing.T, s *store.Store) {
 		t.Fatalf("add proj-b observation: %v", err)
 	}
 
-	if _, err := s.AddPrompt(store.AddPromptParams{SessionID: "s-proj", Content: "prompt-a", Project: "proj-a"}); err != nil {
+	if _, err := s.AddPrompt(store.AddPromptParams{SessionID: projParams.EffectiveID(), Content: "prompt-a", Project: "proj-a"}); err != nil {
 		t.Fatalf("add proj-a prompt: %v", err)
 	}
-	if _, err := s.AddPrompt(store.AddPromptParams{SessionID: "s-other", Content: "prompt-b", Project: "proj-b"}); err != nil {
+	if _, err := s.AddPrompt(store.AddPromptParams{SessionID: otherParams.EffectiveID(), Content: "prompt-b", Project: "proj-b"}); err != nil {
 		t.Fatalf("add proj-b prompt: %v", err)
 	}
 }
@@ -446,7 +449,7 @@ func TestImportBranches(t *testing.T) {
 
 		chunk := ChunkData{
 			Observations: []store.Observation{{
-				ID:        1,
+				ID:        "obsrow-1",
 				SessionID: "missing-session",
 				Type:      "bugfix",
 				Title:     "broken",
@@ -641,12 +644,12 @@ func TestFilterFunctionsAndTimeNormalization(t *testing.T) {
 			{ID: "s2", Project: "proj-b", StartedAt: "2025-01-01 11:00:00"},
 		},
 		Observations: []store.Observation{
-			{ID: 1, SessionID: "s1", CreatedAt: "2025-01-01 10:00:00"},
-			{ID: 2, SessionID: "s2", CreatedAt: "2025-01-01 11:00:00"},
+			{ID: "obsrow-1", SessionID: "s1", CreatedAt: "2025-01-01 10:00:00"},
+			{ID: "obsrow-2", SessionID: "s2", CreatedAt: "2025-01-01 11:00:00"},
 		},
 		Prompts: []store.Prompt{
-			{ID: 1, SessionID: "s1", CreatedAt: "2025-01-01 10:00:00"},
-			{ID: 2, SessionID: "s2", CreatedAt: "2025-01-01 11:00:00"},
+			{ID: "promptrow-1", SessionID: "s1", CreatedAt: "2025-01-01 10:00:00"},
+			{ID: "promptrow-2", SessionID: "s2", CreatedAt: "2025-01-01 11:00:00"},
 		},
 	}
 
@@ -671,10 +674,10 @@ func TestFilterFunctionsAndTimeNormalization(t *testing.T) {
 	if len(newOnly.Sessions) != 1 || newOnly.Sessions[0].ID != "s2" {
 		t.Fatalf("unexpected new sessions: %+v", newOnly.Sessions)
 	}
-	if len(newOnly.Observations) != 1 || newOnly.Observations[0].ID != 2 {
+	if len(newOnly.Observations) != 1 || newOnly.Observations[0].ID != "obsrow-2" {
 		t.Fatalf("unexpected new observations: %+v", newOnly.Observations)
 	}
-	if len(newOnly.Prompts) != 1 || newOnly.Prompts[0].ID != 2 {
+	if len(newOnly.Prompts) != 1 || newOnly.Prompts[0].ID != "promptrow-2" {
 		t.Fatalf("unexpected new prompts: %+v", newOnly.Prompts)
 	}
 
@@ -705,21 +708,21 @@ func TestFilterByProjectEntityLevel(t *testing.T) {
 		},
 		Observations: []store.Observation{
 			// obs in matching session — included via session
-			{ID: 1, SessionID: "s-match", CreatedAt: "2025-01-01 10:00:00"},
+			{ID: "obsrow-1", SessionID: "s-match", CreatedAt: "2025-01-01 10:00:00"},
 			// obs with own project but session has empty project — included via entity project
-			{ID: 2, SessionID: "s-empty", Project: &projA, CreatedAt: "2025-01-01 11:00:00"},
+			{ID: "obsrow-2", SessionID: "s-empty", Project: &projA, CreatedAt: "2025-01-01 11:00:00"},
 			// obs with own project but session has different project — included via entity project
-			{ID: 3, SessionID: "s-other", Project: &projA, CreatedAt: "2025-01-01 12:00:00"},
+			{ID: "obsrow-3", SessionID: "s-other", Project: &projA, CreatedAt: "2025-01-01 12:00:00"},
 			// obs with nil project in non-matching session — excluded
-			{ID: 4, SessionID: "s-other", Project: nil, CreatedAt: "2025-01-01 12:30:00"},
+			{ID: "obsrow-4", SessionID: "s-other", Project: nil, CreatedAt: "2025-01-01 12:30:00"},
 		},
 		Prompts: []store.Prompt{
 			// prompt in matching session — included via session
-			{ID: 1, SessionID: "s-match", CreatedAt: "2025-01-01 10:00:00"},
+			{ID: "promptrow-1", SessionID: "s-match", CreatedAt: "2025-01-01 10:00:00"},
 			// prompt with own project but session has empty project — included via entity project
-			{ID: 2, SessionID: "s-empty", Project: "proj-a", CreatedAt: "2025-01-01 11:00:00"},
+			{ID: "promptrow-2", SessionID: "s-empty", Project: "proj-a", CreatedAt: "2025-01-01 11:00:00"},
 			// prompt with wrong project in non-matching session — excluded
-			{ID: 3, SessionID: "s-other", Project: "proj-b", CreatedAt: "2025-01-01 12:00:00"},
+			{ID: "promptrow-3", SessionID: "s-other", Project: "proj-b", CreatedAt: "2025-01-01 12:00:00"},
 		},
 	}
 
@@ -729,16 +732,16 @@ func TestFilterByProjectEntityLevel(t *testing.T) {
 	if len(result.Observations) != 3 {
 		t.Fatalf("expected 3 observations, got %d: %+v", len(result.Observations), result.Observations)
 	}
-	obsIDs := map[int64]bool{}
+	obsIDs := map[string]bool{}
 	for _, o := range result.Observations {
 		obsIDs[o.ID] = true
 	}
-	for _, id := range []int64{1, 2, 3} {
+	for _, id := range []string{"obsrow-1", "obsrow-2", "obsrow-3"} {
 		if !obsIDs[id] {
-			t.Errorf("expected observation %d to be included", id)
+			t.Errorf("expected observation %s to be included", id)
 		}
 	}
-	if obsIDs[4] {
+	if obsIDs["obsrow-4"] {
 		t.Error("observation 4 (nil project, non-matching session) should be excluded")
 	}
 
@@ -746,14 +749,14 @@ func TestFilterByProjectEntityLevel(t *testing.T) {
 	if len(result.Prompts) != 2 {
 		t.Fatalf("expected 2 prompts, got %d: %+v", len(result.Prompts), result.Prompts)
 	}
-	promptIDs := map[int64]bool{}
+	promptIDs := map[string]bool{}
 	for _, p := range result.Prompts {
 		promptIDs[p.ID] = true
 	}
-	if !promptIDs[1] || !promptIDs[2] {
+	if !promptIDs["promptrow-1"] || !promptIDs["promptrow-2"] {
 		t.Error("expected prompts 1 and 2 to be included")
 	}
-	if promptIDs[3] {
+	if promptIDs["promptrow-3"] {
 		t.Error("prompt 3 (wrong project, non-matching session) should be excluded")
 	}
 

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/engram/internal/testutil"
 )
 
 func newE2EServer(t *testing.T) (*store.Store, *httptest.Server) {
@@ -21,14 +22,14 @@ func newE2EServer(t *testing.T) (*store.Store, *httptest.Server) {
 	if err != nil {
 		t.Fatalf("DefaultConfig: %v", err)
 	}
-	cfg.DataDir = t.TempDir()
+	cfg.DatabaseURL = testutil.NewPostgresURL(t)
 
 	s, err := store.New(cfg)
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
 
-	httpServer := httptest.NewServer(New(s, 0).Handler())
+	httpServer := httptest.NewServer(New(s, 0, "test-version").Handler())
 	t.Cleanup(func() {
 		httpServer.Close()
 		_ = s.Close()
@@ -310,6 +311,9 @@ func TestCoreReadHandlersAndHelpersE2E(t *testing.T) {
 	health := decodeJSON[map[string]any](t, healthResp)
 	if health["status"] != "ok" {
 		t.Fatalf("expected health status ok, got %v", health["status"])
+	}
+	if health["version"] != "test-version" {
+		t.Fatalf("expected health version test-version, got %v", health["version"])
 	}
 
 	create := postJSON(t, client, ts.URL+"/sessions", map[string]any{

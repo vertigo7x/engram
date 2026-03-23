@@ -1,11 +1,12 @@
 // Package server provides the HTTP API for Engram.
 //
-// This is how external clients (OpenCode plugin, Claude Code hooks,
-// any agent) communicate with the memory engine. Simple JSON REST API.
+// This is how external clients and agents communicate with the memory engine.
+// Simple JSON REST API.
 package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,7 +16,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Gentleman-Programming/engram/internal/auth"
 	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/google/uuid"
 )
 
 var loadServerStats = func(s *store.Store) (*store.Stats, error) {
@@ -42,14 +45,15 @@ type Server struct {
 	mux        *http.ServeMux
 	host       string
 	port       int
+	version    string
 	listen     func(network, address string) (net.Listener, error)
 	serve      func(net.Listener, http.Handler) error
 	onWrite    func() // called after successful local writes (for autosync notification)
 	syncStatus SyncStatusProvider
 }
 
-func New(s *store.Store, port int) *Server {
-	srv := &Server{store: s, host: "127.0.0.1", port: port, listen: net.Listen, serve: http.Serve}
+func New(s *store.Store, port int, version string) *Server {
+	srv := &Server{store: s, host: "127.0.0.1", port: port, version: version, listen: net.Listen, serve: http.Serve}
 	srv.mux = http.NewServeMux()
 	srv.routes()
 	return srv
@@ -171,10 +175,14 @@ func (s *Server) routes() {
 // ─── Handlers ────────────────────────────────────────────────────────────────
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	version := s.version
+	if version == "" {
+		version = "dev"
+	}
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"status":  "ok",
 		"service": "engram",
-		"version": "0.1.0",
+		"version": version,
 	})
 }
 
@@ -193,13 +201,32 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.store.CreateSession(body.ID, body.Project, body.Directory); err != nil {
+	claims := auth.ClaimsFromContext(r.Context())
+	params := store.CreateSessionParams{
+		ClientSessionID: body.ID,
+		Project:         body.Project,
+		Directory:       body.Directory,
+	}
+	if claims != nil {
+		params.Author = &store.SessionAuthor{
+			Issuer:   auth.StringClaim(claims, "iss"),
+			Subject:  auth.StringClaim(claims, "sub"),
+			Username: auth.StringClaim(claims, "preferred_username"),
+			Email:    auth.StringClaim(claims, "email"),
+		}
+	}
+
+	if err := s.store.CreateSession(params); err != nil {
+		if errors.Is(err, store.ErrSessionAuthorConflict) {
+			jsonError(w, http.StatusConflict, err.Error())
+			return
+		}
 		jsonError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	s.notifyWrite()
-	jsonResponse(w, http.StatusCreated, map[string]string{"id": body.ID, "status": "created"})
+	jsonResponse(w, http.StatusCreated, map[string]string{"id": params.EffectiveID(), "status": "created"})
 }
 
 func (s *Server) handleEndSession(w http.ResponseWriter, r *http.Request) {
@@ -310,9 +337,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetObservation(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	idRaw := r.PathValue("id")
+	id := strings.TrimSpace(idRaw)
+	if !validObservationID(idRaw) {
 		jsonError(w, http.StatusBadRequest, "invalid observation id")
 		return
 	}
@@ -327,9 +354,9 @@ func (s *Server) handleGetObservation(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUpdateObservation(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	idRaw := r.PathValue("id")
+	id := strings.TrimSpace(idRaw)
+	if !validObservationID(idRaw) {
 		jsonError(w, http.StatusBadRequest, "invalid observation id")
 		return
 	}
@@ -356,9 +383,9 @@ func (s *Server) handleUpdateObservation(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleDeleteObservation(w http.ResponseWriter, r *http.Request) {
-	idStr := r.PathValue("id")
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
+	idRaw := r.PathValue("id")
+	id := strings.TrimSpace(idRaw)
+	if !validObservationID(idRaw) {
 		jsonError(w, http.StatusBadRequest, "invalid observation id")
 		return
 	}
@@ -378,15 +405,9 @@ func (s *Server) handleDeleteObservation(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleTimeline(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("observation_id")
-	if idStr == "" {
+	id := strings.TrimSpace(r.URL.Query().Get("observation_id"))
+	if !validObservationID(id) {
 		jsonError(w, http.StatusBadRequest, "observation_id parameter is required")
-		return
-	}
-
-	id, err := strconv.ParseInt(idStr, 10, 64)
-	if err != nil {
-		jsonError(w, http.StatusBadRequest, "invalid observation_id")
 		return
 	}
 
@@ -626,4 +647,13 @@ func queryBool(r *http.Request, key string, defaultVal bool) bool {
 		return defaultVal
 	}
 	return b
+}
+
+func validObservationID(id string) bool {
+	trimmed := strings.TrimSpace(id)
+	if trimmed == "" || trimmed != id {
+		return false
+	}
+	_, err := uuid.Parse(trimmed)
+	return err == nil
 }

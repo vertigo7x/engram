@@ -23,7 +23,7 @@ Use this skill when:
 1. Every new/changed endpoint must have tests.
 2. Cover both success and error paths.
 3. Keep scripts and docs aligned with real handlers.
-4. Do not reference non-existent endpoints in plugins/hooks.
+4. Do not reference non-existent endpoints in integration docs or examples.
 
 ---
 

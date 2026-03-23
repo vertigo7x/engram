@@ -10,14 +10,11 @@
 package tui
 
 import (
-	"github.com/Gentleman-Programming/engram/internal/setup"
 	"github.com/Gentleman-Programming/engram/internal/store"
 	"github.com/Gentleman-Programming/engram/internal/version"
 
-	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // ─── Screens ─────────────────────────────────────────────────────────────────
@@ -33,7 +30,6 @@ const (
 	ScreenTimeline
 	ScreenSessions
 	ScreenSessionDetail
-	ScreenSetup
 )
 
 // ─── Custom Messages ─────────────────────────────────────────────────────────
@@ -78,11 +74,6 @@ type sessionObservationsMsg struct {
 	err          error
 }
 
-type setupInstallMsg struct {
-	result *setup.Result
-	err    error
-}
-
 // ─── Model ───────────────────────────────────────────────────────────────────
 
 type Model struct {
@@ -124,18 +115,6 @@ type Model struct {
 	SelectedSessionIdx  int
 	SessionObservations []store.Observation
 	SessionDetailScroll int
-
-	// Setup
-	SetupAgents           []setup.Agent
-	SetupResult           *setup.Result
-	SetupError            string
-	SetupDone             bool
-	SetupInstalling       bool
-	SetupInstallingName   string // agent name being installed (for display)
-	SetupAllowlistPrompt  bool   // true = showing y/n prompt for allowlist
-	SetupAllowlistApplied bool   // true = allowlist was added successfully
-	SetupAllowlistError   string // error message if allowlist injection failed
-	SetupSpinner          spinner.Model
 }
 
 // New creates a new TUI model connected to the given store.
@@ -145,16 +124,11 @@ func New(s *store.Store, version string) Model {
 	ti.CharLimit = 256
 	ti.Width = 60
 
-	sp := spinner.New()
-	sp.Spinner = spinner.Dot
-	sp.Style = lipgloss.NewStyle().Foreground(colorLavender)
-
 	return Model{
-		store:        s,
-		Version:      version,
-		Screen:       ScreenDashboard,
-		SearchInput:  ti,
-		SetupSpinner: sp,
+		store:       s,
+		Version:     version,
+		Screen:      ScreenDashboard,
+		SearchInput: ti,
 	}
 }
 
@@ -196,14 +170,14 @@ func loadRecentObservations(s *store.Store) tea.Cmd {
 	}
 }
 
-func loadObservationDetail(s *store.Store, id int64) tea.Cmd {
+func loadObservationDetail(s *store.Store, id string) tea.Cmd {
 	return func() tea.Msg {
 		obs, err := s.GetObservation(id)
 		return observationDetailMsg{observation: obs, err: err}
 	}
 }
 
-func loadTimeline(s *store.Store, obsID int64) tea.Cmd {
+func loadTimeline(s *store.Store, obsID string) tea.Cmd {
 	return func() tea.Msg {
 		tl, err := s.Timeline(obsID, 10, 10)
 		return timelineMsg{timeline: tl, err: err}
@@ -223,13 +197,3 @@ func loadSessionObservations(s *store.Store, sessionID string) tea.Cmd {
 		return sessionObservationsMsg{observations: obs, err: err}
 	}
 }
-
-func installAgent(agentName string) tea.Cmd {
-	return func() tea.Msg {
-		result, err := installAgentFn(agentName)
-		return setupInstallMsg{result: result, err: err}
-	}
-}
-
-var installAgentFn = setup.Install
-var addClaudeCodeAllowlistFn = setup.AddClaudeCodeAllowlist

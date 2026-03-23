@@ -1,16 +1,16 @@
 // Package mcp implements the Model Context Protocol server for Engram.
 //
-// This exposes memory tools via MCP stdio transport so ANY agent
+// This exposes memory tools via MCP transport so ANY agent
 // (OpenCode, Claude Code, Cursor, Windsurf, etc.) can use Engram's
 // persistent memory just by adding it as an MCP server.
 //
 // Tool profiles allow agents to load only the tools they need:
 //
-//	engram mcp                    → all 14 tools (default)
-//	engram mcp --tools=agent      → 11 tools agents actually use (per skill files)
-//	engram mcp --tools=admin      → 3 tools for TUI/CLI (delete, stats, timeline)
-//	engram mcp --tools=agent,admin → combine profiles
-//	engram mcp --tools=mem_save,mem_search → individual tool names
+//	ENGRAM_MCP_TOOLS=all          → all 14 tools
+//	ENGRAM_MCP_TOOLS=agent        → 11 tools agents actually use (per skill files)
+//	ENGRAM_MCP_TOOLS=admin        → 3 tools for TUI/CLI (delete, stats, timeline)
+//	ENGRAM_MCP_TOOLS=agent,admin  → combine profiles
+//	ENGRAM_MCP_TOOLS=mem_save,mem_search → individual tool names
 package mcp
 
 import (
@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Gentleman-Programming/engram/internal/auth"
 	"github.com/Gentleman-Programming/engram/internal/store"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -27,6 +28,26 @@ var suggestTopicKey = store.SuggestTopicKey
 
 var loadMCPStats = func(s *store.Store) (*store.Stats, error) {
 	return s.Stats()
+}
+
+func sessionAuthorFromContext(ctx context.Context) *store.SessionAuthor {
+	claims := auth.ClaimsFromContext(ctx)
+	if claims == nil {
+		return nil
+	}
+	issuer := auth.StringClaim(claims, "iss")
+	subject := auth.StringClaim(claims, "sub")
+	username := auth.StringClaim(claims, "preferred_username")
+	email := auth.StringClaim(claims, "email")
+	if issuer == "" || subject == "" {
+		return nil
+	}
+	return &store.SessionAuthor{
+		Issuer:   issuer,
+		Subject:  subject,
+		Username: username,
+		Email:    email,
+	}
 }
 
 // ─── Tool Profiles ───────────────────────────────────────────────────────────
@@ -251,7 +272,7 @@ Examples:
 				mcp.WithDestructiveHintAnnotation(false),
 				mcp.WithIdempotentHintAnnotation(false),
 				mcp.WithOpenWorldHintAnnotation(false),
-				mcp.WithNumber("id",
+				mcp.WithString("id",
 					mcp.Required(),
 					mcp.Description("Observation ID to update"),
 				),
@@ -314,7 +335,7 @@ Examples:
 				mcp.WithDestructiveHintAnnotation(true),
 				mcp.WithIdempotentHintAnnotation(false),
 				mcp.WithOpenWorldHintAnnotation(false),
-				mcp.WithNumber("id",
+				mcp.WithString("id",
 					mcp.Required(),
 					mcp.Description("Observation ID to delete"),
 				),
@@ -403,7 +424,7 @@ Examples:
 				mcp.WithDestructiveHintAnnotation(false),
 				mcp.WithIdempotentHintAnnotation(true),
 				mcp.WithOpenWorldHintAnnotation(false),
-				mcp.WithNumber("observation_id",
+				mcp.WithString("observation_id",
 					mcp.Required(),
 					mcp.Description("The observation ID to center the timeline on (from mem_search results)"),
 				),
@@ -429,7 +450,7 @@ Examples:
 				mcp.WithDestructiveHintAnnotation(false),
 				mcp.WithIdempotentHintAnnotation(true),
 				mcp.WithOpenWorldHintAnnotation(false),
-				mcp.WithNumber("id",
+				mcp.WithString("id",
 					mcp.Required(),
 					mcp.Description("The observation ID to retrieve"),
 				),
@@ -614,7 +635,7 @@ func handleSearch(s *store.Store) server.ToolHandlerFunc {
 				anyTruncated = true
 				preview += " [preview]"
 			}
-			fmt.Fprintf(&b, "[%d] #%d (%s) — %s\n    %s\n    %s%s | scope: %s\n\n",
+			fmt.Fprintf(&b, "[%d] %s (%s) — %s\n    %s\n    %s%s | scope: %s\n\n",
 				i+1, r.ID, r.Type, r.Title,
 				preview,
 				r.CreatedAt, project, r.Scope)
@@ -643,15 +664,17 @@ func handleSave(s *store.Store) server.ToolHandlerFunc {
 		if sessionID == "" {
 			sessionID = defaultSessionID(project)
 		}
+		params := store.CreateSessionParams{ClientSessionID: sessionID, Project: project, Directory: "", Author: sessionAuthorFromContext(ctx)}
+		effectiveSessionID := params.EffectiveID()
 		suggestedTopicKey := suggestTopicKey(typ, title, content)
 
 		// Ensure the session exists
-		s.CreateSession(sessionID, project, "")
+		_ = s.CreateSession(params)
 
 		truncated := len(content) > s.MaxObservationLength()
 
 		_, err := s.AddObservation(store.AddObservationParams{
-			SessionID: sessionID,
+			SessionID: effectiveSessionID,
 			Type:      typ,
 			Title:     title,
 			Content:   content,
@@ -695,8 +718,9 @@ func handleSuggestTopicKey() server.ToolHandlerFunc {
 
 func handleUpdate(s *store.Store) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id := int64(intArg(req, "id", 0))
-		if id == 0 {
+		id, _ := req.GetArguments()["id"].(string)
+		id = strings.TrimSpace(id)
+		if id == "" {
 			return mcp.NewToolResultError("id is required"), nil
 		}
 
@@ -734,7 +758,7 @@ func handleUpdate(s *store.Store) server.ToolHandlerFunc {
 			return mcp.NewToolResultError("Failed to update memory: " + err.Error()), nil
 		}
 
-		msg := fmt.Sprintf("Memory updated: #%d %q (%s, scope=%s)", obs.ID, obs.Title, obs.Type, obs.Scope)
+		msg := fmt.Sprintf("Memory updated: %s %q (%s, scope=%s)", obs.ID, obs.Title, obs.Type, obs.Scope)
 		if contentLen > s.MaxObservationLength() {
 			msg += fmt.Sprintf("\n⚠ WARNING: Content was truncated from %d to %d chars. Consider splitting into smaller observations.", contentLen, s.MaxObservationLength())
 		}
@@ -744,8 +768,9 @@ func handleUpdate(s *store.Store) server.ToolHandlerFunc {
 
 func handleDelete(s *store.Store) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id := int64(intArg(req, "id", 0))
-		if id == 0 {
+		id, _ := req.GetArguments()["id"].(string)
+		id = strings.TrimSpace(id)
+		if id == "" {
 			return mcp.NewToolResultError("id is required"), nil
 		}
 
@@ -758,7 +783,7 @@ func handleDelete(s *store.Store) server.ToolHandlerFunc {
 		if hardDelete {
 			mode = "permanently deleted"
 		}
-		return mcp.NewToolResultText(fmt.Sprintf("Memory #%d %s", id, mode)), nil
+		return mcp.NewToolResultText(fmt.Sprintf("Memory %s %s", id, mode)), nil
 	}
 }
 
@@ -771,12 +796,14 @@ func handleSavePrompt(s *store.Store) server.ToolHandlerFunc {
 		if sessionID == "" {
 			sessionID = defaultSessionID(project)
 		}
+		params := store.CreateSessionParams{ClientSessionID: sessionID, Project: project, Directory: "", Author: sessionAuthorFromContext(ctx)}
+		effectiveSessionID := params.EffectiveID()
 
 		// Ensure the session exists
-		s.CreateSession(sessionID, project, "")
+		_ = s.CreateSession(params)
 
 		_, err := s.AddPrompt(store.AddPromptParams{
-			SessionID: sessionID,
+			SessionID: effectiveSessionID,
 			Content:   content,
 			Project:   project,
 		})
@@ -840,8 +867,9 @@ func handleStats(s *store.Store) server.ToolHandlerFunc {
 
 func handleTimeline(s *store.Store) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		observationID := int64(intArg(req, "observation_id", 0))
-		if observationID == 0 {
+		observationID, _ := req.GetArguments()["observation_id"].(string)
+		observationID = strings.TrimSpace(observationID)
+		if observationID == "" {
 			return mcp.NewToolResultError("observation_id is required"), nil
 		}
 		before := intArg(req, "before", 5)
@@ -868,13 +896,13 @@ func handleTimeline(s *store.Store) server.ToolHandlerFunc {
 		if len(result.Before) > 0 {
 			b.WriteString("─── Before ───\n")
 			for _, e := range result.Before {
-				fmt.Fprintf(&b, "  #%d [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
+				fmt.Fprintf(&b, "  %s [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
 			}
 			b.WriteString("\n")
 		}
 
 		// Focus observation (highlighted)
-		fmt.Fprintf(&b, ">>> #%d [%s] %s <<<\n", result.Focus.ID, result.Focus.Type, result.Focus.Title)
+		fmt.Fprintf(&b, ">>> %s [%s] %s <<<\n", result.Focus.ID, result.Focus.Type, result.Focus.Title)
 		fmt.Fprintf(&b, "    %s\n", truncate(result.Focus.Content, 500))
 		fmt.Fprintf(&b, "    %s\n\n", result.Focus.CreatedAt)
 
@@ -882,7 +910,7 @@ func handleTimeline(s *store.Store) server.ToolHandlerFunc {
 		if len(result.After) > 0 {
 			b.WriteString("─── After ───\n")
 			for _, e := range result.After {
-				fmt.Fprintf(&b, "  #%d [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
+				fmt.Fprintf(&b, "  %s [%s] %s — %s\n", e.ID, e.Type, e.Title, truncate(e.Content, 150))
 			}
 		}
 
@@ -892,14 +920,15 @@ func handleTimeline(s *store.Store) server.ToolHandlerFunc {
 
 func handleGetObservation(s *store.Store) server.ToolHandlerFunc {
 	return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		id := int64(intArg(req, "id", 0))
-		if id == 0 {
+		id, _ := req.GetArguments()["id"].(string)
+		id = strings.TrimSpace(id)
+		if id == "" {
 			return mcp.NewToolResultError("id is required"), nil
 		}
 
 		obs, err := s.GetObservation(id)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Observation #%d not found", id)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("Observation %s not found", id)), nil
 		}
 
 		project := ""
@@ -918,7 +947,7 @@ func handleGetObservation(s *store.Store) server.ToolHandlerFunc {
 		duplicateMeta := fmt.Sprintf("\nDuplicates: %d", obs.DuplicateCount)
 		revisionMeta := fmt.Sprintf("\nRevisions: %d", obs.RevisionCount)
 
-		result := fmt.Sprintf("#%d [%s] %s\n%s\nSession: %s%s%s\nCreated: %s",
+		result := fmt.Sprintf("%s [%s] %s\n%s\nSession: %s%s%s\nCreated: %s",
 			obs.ID, obs.Type, obs.Title,
 			obs.Content,
 			obs.SessionID, project+scope+topic, toolName+duplicateMeta+revisionMeta,
@@ -938,12 +967,14 @@ func handleSessionSummary(s *store.Store) server.ToolHandlerFunc {
 		if sessionID == "" {
 			sessionID = defaultSessionID(project)
 		}
+		params := store.CreateSessionParams{ClientSessionID: sessionID, Project: project, Directory: "", Author: sessionAuthorFromContext(ctx)}
+		effectiveSessionID := params.EffectiveID()
 
 		// Ensure the session exists
-		s.CreateSession(sessionID, project, "")
+		_ = s.CreateSession(params)
 
 		_, err := s.AddObservation(store.AddObservationParams{
-			SessionID: sessionID,
+			SessionID: effectiveSessionID,
 			Type:      "session_summary",
 			Title:     fmt.Sprintf("Session summary: %s", project),
 			Content:   content,
@@ -963,11 +994,12 @@ func handleSessionStart(s *store.Store) server.ToolHandlerFunc {
 		project, _ := req.GetArguments()["project"].(string)
 		directory, _ := req.GetArguments()["directory"].(string)
 
-		if err := s.CreateSession(id, project, directory); err != nil {
+		params := store.CreateSessionParams{ClientSessionID: id, Project: project, Directory: directory, Author: sessionAuthorFromContext(ctx)}
+		if err := s.CreateSession(params); err != nil {
 			return mcp.NewToolResultError("Failed to start session: " + err.Error()), nil
 		}
 
-		return mcp.NewToolResultText(fmt.Sprintf("Session %q started for project %q", id, project)), nil
+		return mcp.NewToolResultText(fmt.Sprintf("Session %q started for project %q", params.EffectiveID(), project)), nil
 	}
 }
 
@@ -997,15 +1029,17 @@ func handleCapturePassive(s *store.Store) server.ToolHandlerFunc {
 
 		if sessionID == "" {
 			sessionID = defaultSessionID(project)
-			_ = s.CreateSession(sessionID, project, "")
 		}
+		params := store.CreateSessionParams{ClientSessionID: sessionID, Project: project, Directory: "", Author: sessionAuthorFromContext(ctx)}
+		effectiveSessionID := params.EffectiveID()
+		_ = s.CreateSession(params)
 
 		if source == "" {
 			source = "mcp-passive"
 		}
 
 		result, err := s.PassiveCapture(store.PassiveCaptureParams{
-			SessionID: sessionID,
+			SessionID: effectiveSessionID,
 			Content:   content,
 			Project:   project,
 			Source:    source,

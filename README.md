@@ -11,7 +11,6 @@
   <a href="docs/INSTALLATION.md">Installation</a> &bull;
   <a href="docs/AGENT-SETUP.md">Agent Setup</a> &bull;
   <a href="docs/ARCHITECTURE.md">Architecture</a> &bull;
-  <a href="docs/PLUGINS.md">Plugins</a> &bull;
   <a href="CONTRIBUTING.md">Contributing</a> &bull;
   <a href="DOCS.md">Full Docs</a>
 </p>
@@ -22,14 +21,14 @@
 
 Your AI coding agent forgets everything when the session ends. Engram gives it a brain.
 
-A **Go binary** with SQLite + FTS5 full-text search, exposed via CLI, HTTP API, MCP server, and an interactive TUI. Works with **any agent** that supports MCP — Claude Code, OpenCode, Gemini CLI, Codex, VS Code (Copilot), Antigravity, Cursor, Windsurf, or anything else.
+A **Go binary** backed by PostgreSQL, exposed via CLI, HTTP API, MCP over HTTP, and an interactive TUI. Works with **any agent** that supports MCP — Claude Code, OpenCode, Gemini CLI, Codex, VS Code (Copilot), Antigravity, Cursor, Windsurf, or anything else.
 
 ```
 Agent (Claude Code / OpenCode / Gemini CLI / Codex / VS Code / Antigravity / ...)
-    ↓ MCP stdio
-Engram (single Go binary)
+    ↓ MCP HTTP
+Engram (single Go binary, `engram serve`)
     ↓
-SQLite + FTS5 (~/.engram/engram.db)
+PostgreSQL (`ENGRAM_DATABASE_URL`)
 ```
 
 ## Quick Start
@@ -46,23 +45,23 @@ Windows, Linux, and other install methods → [docs/INSTALLATION.md](docs/INSTAL
 
 | Agent | One-liner |
 |-------|-----------|
-| Claude Code | `claude plugin marketplace add Gentleman-Programming/engram && claude plugin install engram` |
-| OpenCode | `engram setup opencode` |
-| Gemini CLI | `engram setup gemini-cli` |
-| Codex | `engram setup codex` |
-| VS Code | `code --add-mcp '{"name":"engram","command":"engram","args":["mcp"]}'` |
+| Claude Code | Add remote MCP config from `docs/AGENT-SETUP.md` |
+| OpenCode | Add remote MCP config from `docs/AGENT-SETUP.md` |
+| Gemini CLI | Add remote MCP config from `docs/AGENT-SETUP.md` |
+| Codex | Add remote MCP config from `docs/AGENT-SETUP.md` |
+| VS Code | `code --add-mcp '{"name":"engram","url":"https://your-engram-host/mcp"}'` |
 | Cursor / Windsurf / Any MCP | See [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md) |
 
 Full per-agent config, Memory Protocol, and compaction survival → [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)
 
-That's it. No Node.js, no Python, no Docker. **One binary, one SQLite file.**
+That's it. No Node.js, no Python, no sidecar services. **One binary, one PostgreSQL database.**
 
 ## How It Works
 
 ```
 1. Agent completes significant work (bugfix, architecture decision, etc.)
 2. Agent calls mem_save → title, type, What/Why/Where/Learned
-3. Engram persists to SQLite with FTS5 indexing
+3. Engram persists memories to PostgreSQL
 4. Next session: agent searches memory, gets relevant context
 ```
 
@@ -120,9 +119,7 @@ Full sync documentation → [DOCS.md](DOCS.md)
 
 | Command | Description |
 |---------|-------------|
-| `engram setup [agent]` | Install agent integration |
-| `engram serve [port]` | Start HTTP API (default: 7437) |
-| `engram mcp` | Start MCP server (stdio) |
+| `engram serve [port]` | Start HTTP API + MCP over HTTP |
 | `engram tui` | Launch terminal UI |
 | `engram search <query>` | Search memories |
 | `engram save <title> <msg>` | Save a memory |
@@ -141,7 +138,6 @@ Full sync documentation → [DOCS.md](DOCS.md)
 | [Installation](docs/INSTALLATION.md) | All install methods + platform support |
 | [Agent Setup](docs/AGENT-SETUP.md) | Per-agent configuration + Memory Protocol |
 | [Architecture](docs/ARCHITECTURE.md) | How it works + MCP tools + project structure |
-| [Plugins](docs/PLUGINS.md) | OpenCode & Claude Code plugin details |
 | [Comparison](docs/COMPARISON.md) | Why Engram vs claude-mem |
 | [Contributing](CONTRIBUTING.md) | Contribution workflow + standards |
 | [Full Docs](DOCS.md) | Complete technical reference |

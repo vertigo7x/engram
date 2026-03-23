@@ -7,7 +7,6 @@
 - commit-hygiene: clean conventional commits.
 - server-api: API contract + E2E guardrails.
 - tui-quality: tested and consistent TUI UX.
-- plugin-thin: thin scripts, strong Go core.
 - docs-alignment: docs must match code.
 - pr-review-deep: deep technical review before merge.
 - architecture-guardrails: system boundaries and ownership rules.

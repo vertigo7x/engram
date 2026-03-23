@@ -12,7 +12,7 @@ metadata:
 ## When to Use
 
 Use this skill when:
-- Changing APIs, setup flows, or plugin behavior
+- Changing APIs, integration flows, or remote MCP behavior
 - Updating CLI commands or examples
 - Writing contributor guidance
 
