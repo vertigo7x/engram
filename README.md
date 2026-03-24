@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Persistent memory for AI coding agents</strong><br>
-  <em>Agent-agnostic. Single binary. Zero dependencies.</em>
+  <strong>Teams Persistent memory for AI coding agents</strong><br>
+  <em>Agent-agnostic.</em>
 </p>
 
 <p align="center">
@@ -18,9 +18,6 @@
 ---
 
 > **postgram** is a remote memory service for AI coding agents. It provides a persistent, shared memory store backed by PostgreSQL, accessible over HTTP using the Memory Context Protocol (MCP). With Postgram, your agents can save decisions, bugfixes, and summaries across sessions, enabling long-term context and learning.
-
-
-Your AI coding agent forgets everything when the session ends. Postgram gives it a brain.
 
 Postgram is a **remote MCP memory service** for coding agents. Run one Go binary, connect it to PostgreSQL, expose `/mcp`, and point your agents at it.
 
@@ -74,6 +71,32 @@ Default endpoints:
 - MCP: `http://127.0.0.1:7437/mcp`
 
 For team/shared setups, put Postgram behind your normal ingress or reverse proxy and publish a stable URL such as `https://postgram.example.com/mcp`.
+
+### OAuth2 / OIDC Authentication
+
+Postgram can protect the MCP HTTP endpoint with an external OAuth2/OIDC provider such as Keycloak, Auth0, Okta, or any provider that exposes standard issuer and JWKS metadata.
+
+Enable it with environment variables like:
+
+```bash
+POSTGRAM_MCP_AUTH_ENABLED=true
+POSTGRAM_OIDC_ISSUER=https://auth.example.com/realms/shared
+POSTGRAM_OIDC_AUDIENCE=postgram-mcp
+POSTGRAM_BASE_URL=https://postgram.example.com
+POSTGRAM_OAUTH_RESOURCE=https://postgram.example.com/mcp
+```
+
+Optional settings:
+- `POSTGRAM_OIDC_JWKS_URL` to override JWKS discovery
+- `POSTGRAM_OIDC_REQUIRED_SCOPE` to require a scope such as `mcp:tools`
+- `POSTGRAM_OAUTH_AUTHORIZATION_SERVERS` to publish explicit authorization server metadata
+
+When auth is enabled:
+- clients authenticate with your OAuth2 provider and send bearer tokens to `/mcp`
+- Postgram validates issuer, audience, signature, and optional scope
+- Postgram exposes OAuth Protected Resource Metadata at `/.well-known/oauth-protected-resource`
+
+Full provider setup example, including Keycloak, lives in `DOCS.md:187`.
 
 ### 3. Connect Your Agent
 
@@ -171,7 +194,6 @@ postgram tui
 | `postgram import <file>` | Import from JSON |
 | `postgram version` | Show version |
 
-Most users only need `postgram serve` plus the agent config from `docs/AGENT-SETUP.md`.
 
 ## Documentation
 
