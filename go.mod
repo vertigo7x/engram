@@ -1,4 +1,4 @@
-module github.com/Gentleman-Programming/postgram
+module github.com/vertigo7x/postgram
 
 go 1.25.0
 
