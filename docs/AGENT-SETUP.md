@@ -20,6 +20,37 @@ Postgram works with **any MCP-compatible agent**. Pick your agent below.
 
 ---
 
+## OAuth2 / OIDC Setup
+
+If your Postgram server has `POSTGRAM_MCP_AUTH_ENABLED=true`, agents must authenticate against your OAuth2/OIDC provider before calling `/mcp`.
+
+Server-side values that must already be configured on Postgram:
+
+```bash
+POSTGRAM_MCP_AUTH_ENABLED=true
+POSTGRAM_OIDC_ISSUER=https://auth.example.com/realms/shared
+POSTGRAM_OIDC_AUDIENCE=postgram-mcp
+POSTGRAM_BASE_URL=https://postgram.example.com
+POSTGRAM_OAUTH_RESOURCE=https://postgram.example.com/mcp
+```
+
+Common client-side values you will need:
+- `url`: your MCP endpoint, for example `https://postgram.example.com/mcp`
+- `clientId`: the OAuth client registered for your agent
+- `scope`: usually `openid profile` plus any required MCP scope such as `mcp:tools`
+
+When auth is enabled:
+- the agent connects to the same MCP URL as before
+- the client performs OAuth login with your provider
+- Postgram validates issuer, audience, signature, and optional scope
+- OAuth protected resource metadata is exposed at `https://your-postgram-host/.well-known/oauth-protected-resource`
+
+If your client supports explicit OAuth settings, add them next to the MCP server config. If it does not, use the same MCP URL and let the client complete the provider login flow automatically when prompted.
+
+For a full provider example, including Keycloak setup, see `DOCS.md:199`.
+
+---
+
 ## OpenCode
 
 Configure OpenCode to use Postgram as a remote MCP server:
@@ -32,7 +63,11 @@ Add to your `opencode.json` (global: `~/.config/opencode/opencode.json` or proje
     "postgram": {
       "type": "remote",
       "url": "https://your-postgram-host/mcp",
-      "enabled": true
+      "enabled": true,
+      "oauth": {
+        "clientId": "postgram-local",
+        "scope": "openid profile mcp:tools"
+      }
     }
   }
 }
@@ -56,6 +91,8 @@ Add to your `.claude/settings.json` (project) or `~/.claude/settings.json` (glob
 }
 ```
 
+If your Claude Code build exposes OAuth fields for remote MCP servers, add your provider client there using the same values described in [OAuth2 / OIDC Setup](#oauth2--oidc-setup). If not, keep the MCP URL and complete the browser/device login flow when Claude prompts for authentication.
+
 Add a [Surviving Compaction](#surviving-compaction-recommended) prompt to your `CLAUDE.md` so the agent remembers to use Postgram after context resets.
 
 ---
@@ -74,6 +111,8 @@ Add to your `~/.gemini/settings.json` (global) or `.gemini/settings.json` (proje
 }
 ```
 
+If your Gemini build exposes explicit OAuth settings for remote MCP servers, add your provider client there using the values from [OAuth2 / OIDC Setup](#oauth2--oidc-setup). Otherwise keep the MCP URL and complete the login flow when Gemini prompts for authentication.
+
 Also add the Memory Protocol to your Gemini instructions so the agent knows when to save, search, and close sessions.
 
 ---
@@ -86,6 +125,8 @@ Add to your `~/.codex/config.toml` (Windows: `%APPDATA%\codex\config.toml`):
 [mcp_servers.postgram]
 url = "https://your-postgram-host/mcp"
 ```
+
+If your Codex build supports explicit OAuth configuration for MCP servers, add your provider client there using the values from [OAuth2 / OIDC Setup](#oauth2--oidc-setup). Otherwise keep the MCP URL and complete the interactive login flow when prompted.
 
 Also add the Memory Protocol to your Codex instructions or compact prompt so the agent preserves session knowledge across context resets.
 
@@ -123,6 +164,8 @@ Add to `.vscode/mcp.json` in your project:
 ```bash
 code --add-mcp "{\"name\":\"postgram\",\"url\":\"https://your-postgram-host/mcp\"}"
 ```
+
+If your VS Code MCP client exposes OAuth fields, add your provider client using the values from [OAuth2 / OIDC Setup](#oauth2--oidc-setup). Otherwise keep the MCP URL and let VS Code complete the browser/device login flow when prompted.
 
 > **Using Claude Code extension in VS Code?** The Claude Code extension runs inside VS Code but uses its own MCP config. Follow the [Claude Code](#claude-code) instructions above — the `.claude/settings.json` config works whether you use Claude Code as a CLI or as a VS Code extension.
 
@@ -167,6 +210,8 @@ See [Surviving Compaction](#surviving-compaction-recommended) for the minimal ve
 }
 ```
 
+If your Antigravity build exposes explicit OAuth fields for remote MCP servers, add your provider client there using the values from [OAuth2 / OIDC Setup](#oauth2--oidc-setup). Otherwise keep the MCP URL and complete the login flow when prompted.
+
 **Adding the Memory Protocol** (recommended):
 
 Add the Memory Protocol as a global rule in `~/.gemini/GEMINI.md`, or as a workspace rule in `.agent/rules/`. See [DOCS.md](../DOCS.md#memory-protocol-full-text) for the full text, or use the minimal version from [Surviving Compaction](#surviving-compaction-recommended).
@@ -189,6 +234,8 @@ Add to your `.cursor/mcp.json` (same path on all platforms — it's project-rela
 }
 ```
 
+If your Cursor build exposes explicit OAuth fields, add your provider client there using the values from [OAuth2 / OIDC Setup](#oauth2--oidc-setup). Otherwise keep the MCP URL and complete the login flow when prompted.
+
 > **Windows**: Make sure `postgram.exe` is in your `PATH`. Cursor resolves MCP commands from the system PATH.
 
 > **Memory Protocol:** Add the Memory Protocol instructions to your `.cursorrules` file. See [DOCS.md](../DOCS.md#memory-protocol-full-text) for the full text, or use the minimal version from [Surviving Compaction](#surviving-compaction-recommended).
@@ -209,6 +256,8 @@ Add to your `~/.windsurf/mcp.json` (Windows: `%USERPROFILE%\.windsurf\mcp.json`)
 }
 ```
 
+If your Windsurf build exposes explicit OAuth fields, add your provider client there using the values from [OAuth2 / OIDC Setup](#oauth2--oidc-setup). Otherwise keep the MCP URL and complete the login flow when prompted.
+
 > **Memory Protocol:** Add the Memory Protocol instructions to your `.windsurfrules` file. See [DOCS.md](../DOCS.md#memory-protocol-full-text) for the full text.
 
 ---
@@ -216,6 +265,20 @@ Add to your `~/.windsurf/mcp.json` (Windows: `%USERPROFILE%\.windsurf\mcp.json`)
 ## Any other MCP agent
 
 The pattern is always the same — point your agent's MCP config to your Postgram MCP URL, for example `https://your-postgram-host/mcp`.
+
+If the client supports explicit OAuth settings, provide:
+
+```json
+{
+  "url": "https://your-postgram-host/mcp",
+  "oauth": {
+    "clientId": "postgram-local",
+    "scope": "openid profile mcp:tools"
+  }
+}
+```
+
+If the client does not expose an `oauth` block, keep the MCP URL and follow the client's interactive OAuth/device login flow when prompted.
 
 For local development on the same machine as the agent, `http://127.0.0.1:7437/mcp` is still a valid default.
 
