@@ -1,5 +1,5 @@
 <p align="center">
-  <img width="1024" height="340" alt="image" src="https://github.com/user-attachments/assets/32ed8985-841d-49c3-81f7-2aabc7c7c564" />
+  <img  alt="image" src="assets/postgram.png" />
 </p>
 
 <p align="center">
