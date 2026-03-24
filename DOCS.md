@@ -162,6 +162,18 @@ helm install postgram ./charts/postgram \
   --set database.url="postgres://user:pass@postgres:5432/postgram?sslmode=disable"
 ```
 
+Useful chart values that map directly to runtime env vars:
+
+- `runtime.host` -> `POSTGRAM_HOST`
+- `runtime.dataDir` -> `POSTGRAM_DATA_DIR`
+- `service.port` -> `POSTGRAM_PORT`
+- `mcp.publicUrl` -> `POSTGRAM_MCP_URL`
+- `mcp.httpPath` -> `POSTGRAM_MCP_HTTP_PATH`
+- `mcp.tools` -> `POSTGRAM_MCP_TOOLS`
+- `mcp.baseUrl` -> `POSTGRAM_BASE_URL`
+- `mcp.auth.*` -> OIDC / OAuth env vars
+- `extraEnv` -> extra raw env entries when you need a chart-level override not modeled explicitly
+
 For public deployments, enable MCP auth with OIDC and expose a stable `POSTGRAM_BASE_URL` so clients receive correct `resource_metadata` URLs in `WWW-Authenticate` challenges.
 
 ### Kubernetes Secrets for Database URL

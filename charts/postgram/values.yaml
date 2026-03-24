@@ -1,13 +1,17 @@
 replicaCount: 1
 
 image:
-  repository: gentlemanprogramming/postgram
+  repository: vertigo7x/postgram
   tag: latest
   pullPolicy: IfNotPresent
 
 service:
   type: ClusterIP
   port: 7437
+
+runtime:
+  host: 0.0.0.0
+  dataDir: /data
 
 ingress:
   enabled: false
@@ -27,6 +31,7 @@ database:
   createSecret: false
 
 mcp:
+  publicUrl: ""
   httpPath: /mcp
   tools: agent
   baseUrl: ""
@@ -39,6 +44,8 @@ mcp:
     resourceMetadataPath: /.well-known/oauth-protected-resource
     resource: ""
     authorizationServers: ""
+
+extraEnv: []
 
 persistence:
   enabled: true

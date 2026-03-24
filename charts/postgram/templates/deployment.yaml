@@ -26,13 +26,19 @@ spec:
             - serve
           env:
             - name: POSTGRAM_HOST
-              value: "0.0.0.0"
+              value: {{ .Values.runtime.host | quote }}
             - name: POSTGRAM_PORT
               value: {{ .Values.service.port | quote }}
+            - name: POSTGRAM_DATA_DIR
+              value: {{ .Values.runtime.dataDir | quote }}
             - name: POSTGRAM_MCP_HTTP_PATH
               value: {{ .Values.mcp.httpPath | quote }}
             - name: POSTGRAM_MCP_TOOLS
               value: {{ .Values.mcp.tools | quote }}
+            {{- if .Values.mcp.publicUrl }}
+            - name: POSTGRAM_MCP_URL
+              value: {{ .Values.mcp.publicUrl | quote }}
+            {{- end }}
             {{- if .Values.mcp.baseUrl }}
             - name: POSTGRAM_BASE_URL
               value: {{ .Values.mcp.baseUrl | quote }}
@@ -84,8 +90,9 @@ spec:
             - name: POSTGRAM_OAUTH_AUTHORIZATION_SERVERS
               value: {{ .Values.mcp.auth.authorizationServers | quote }}
             {{- end }}
-            - name: POSTGRAM_DATA_DIR
-              value: /data
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
