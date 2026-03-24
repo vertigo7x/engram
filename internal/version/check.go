@@ -114,12 +114,8 @@ func splitVersion(v string) [3]int {
 
 // updateInstructions returns platform-appropriate update commands.
 func updateInstructions() string {
-	switch runtime.GOOS {
-	case "darwin":
-		return "  brew update && brew upgrade postgram"
-	case "linux":
-		return "  brew update && brew upgrade postgram\n  or: go install github.com/Gentleman-Programming/postgram/cmd/postgram@latest"
-	default:
-		return "  go install github.com/Gentleman-Programming/postgram/cmd/postgram@latest\n  or: https://github.com/Gentleman-Programming/postgram/releases/latest"
+	if runtime.GOOS == "windows" {
+		return "  go install github.com/Gentleman-Programming/postgram/cmd/postgram@latest\n  or build from source with `go build -o postgram.exe ./cmd/postgram`"
 	}
+	return "  go install github.com/Gentleman-Programming/postgram/cmd/postgram@latest\n  or build from source with `go build -o postgram ./cmd/postgram`"
 }

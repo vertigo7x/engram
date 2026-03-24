@@ -34,7 +34,7 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
-// version is set via ldflags at build time by goreleaser.
+// version is set via ldflags at build time by release builds.
 // Falls back to "dev" for local builds.
 var version = "dev"
 

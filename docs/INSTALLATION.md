@@ -2,51 +2,17 @@
 
 # Installation
 
-- [Homebrew (macOS / Linux)](#homebrew-macos--linux)
 - [Windows](#windows)
 - [Install from source (macOS / Linux)](#install-from-source-macos--linux)
-- [Download binary (all platforms)](#download-binary-all-platforms)
 - [Requirements](#requirements)
 - [Environment Variables](#environment-variables)
 - [Windows Config Paths](#windows-config-paths)
 
 ---
 
-## Homebrew (macOS / Linux)
-
-```bash
-brew install gentleman-programming/tap/postgram
-```
-
-Upgrade to latest:
-
-```bash
-brew update && brew upgrade postgram
-```
-
-> **Migrating from Cask?** If you installed postgram before v1.0.1, it was distributed as a Cask. Uninstall first, then reinstall:
-> ```bash
-> brew uninstall --cask postgram 2>/dev/null; brew install gentleman-programming/tap/postgram
-> ```
-
----
-
 ## Windows
 
-**Option A: Download the binary (recommended)**
-
-1. Go to [GitHub Releases](https://github.com/Gentleman-Programming/postgram/releases)
-2. Download `postgram_<version>_windows_amd64.zip` (or `arm64` for ARM devices)
-3. Extract `postgram.exe` to a folder in your `PATH` (e.g. `C:\Users\<you>\bin\`)
-
-```powershell
-# Example: extract and add to PATH (PowerShell)
-Expand-Archive postgram_*_windows_amd64.zip -DestinationPath "$env:USERPROFILE\bin"
-# Add to PATH permanently (run once):
-[Environment]::SetEnvironmentVariable("Path", "$env:USERPROFILE\bin;" + [Environment]::GetEnvironmentVariable("Path", "User"), "User")
-```
-
-**Option B: Install from source**
+Build from source:
 
 ```powershell
 git clone https://github.com/Gentleman-Programming/postgram.git
@@ -80,24 +46,9 @@ go build -ldflags="-X main.version=local-$(git describe --tags --always)" -o pos
 
 ---
 
-## Download binary (all platforms)
-
-Grab the latest release for your platform from [GitHub Releases](https://github.com/Gentleman-Programming/postgram/releases).
-
-| Platform | File |
-|----------|------|
-| macOS (Apple Silicon) | `postgram_<version>_darwin_arm64.tar.gz` |
-| macOS (Intel) | `postgram_<version>_darwin_amd64.tar.gz` |
-| Linux (x86_64) | `postgram_<version>_linux_amd64.tar.gz` |
-| Linux (ARM64) | `postgram_<version>_linux_arm64.tar.gz` |
-| Windows (x86_64) | `postgram_<version>_windows_amd64.zip` |
-| Windows (ARM64) | `postgram_<version>_windows_arm64.zip` |
-
----
-
 ## Requirements
 
-- **Go 1.25+** to build from source (not needed if installing via Homebrew or downloading a binary)
+- **Go 1.25+** to build from source
 - **PostgreSQL** reachable via `POSTGRAM_DATABASE_URL`
 
 The binary works natively on **macOS**, **Linux**, and **Windows** (x86_64 and ARM64).
