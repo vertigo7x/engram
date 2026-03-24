@@ -672,7 +672,7 @@ Postgram does NOT auto-capture raw tool calls. All memory comes from the agent i
 ### From source
 
 ```bash
-git clone https://github.com/alanbuscaglia/postgram.git
+git clone https://github.com/vertigo7x/postgram.git
 cd postgram
 go build -o postgram ./cmd/postgram
 go install ./cmd/postgram

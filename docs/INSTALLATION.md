@@ -2,11 +2,42 @@
 
 # Installation
 
+- [Docker](#docker)
 - [Windows](#windows)
 - [Install from source (macOS / Linux)](#install-from-source-macos--linux)
 - [Requirements](#requirements)
 - [Environment Variables](#environment-variables)
 - [Windows Config Paths](#windows-config-paths)
+
+---
+
+## Docker
+
+### Option A: Use the official published image
+
+```bash
+docker pull vertigo7x/postgram:latest
+
+docker run --rm -p 7437:7437 \
+  -e POSTGRAM_DATABASE_URL='postgres://user:pass@host:5432/postgram?sslmode=disable' \
+  vertigo7x/postgram:latest serve
+```
+
+### Option B: Build the image from this repository
+
+```bash
+git clone https://github.com/vertigo7x/postgram.git
+cd postgram
+docker build -t postgram:local .
+
+docker run --rm -p 7437:7437 \
+  -e POSTGRAM_DATABASE_URL='postgres://user:pass@host:5432/postgram?sslmode=disable' \
+  postgram:local serve
+```
+
+Default endpoints:
+- Health: `http://127.0.0.1:7437/health`
+- MCP: `http://127.0.0.1:7437/mcp`
 
 ---
 
