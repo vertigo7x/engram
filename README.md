@@ -17,9 +17,11 @@
 
 ---
 
-> **postgram** is a remote memory service for AI coding agents. It provides a persistent, shared memory store backed by PostgreSQL, accessible over HTTP using the Memory Context Protocol (MCP). With Postgram, your agents can save decisions, bugfixes, and summaries across sessions, enabling long-term context and learning.
+> **postgram** is a remote memory service for AI coding agents. It provides a persistent, shared memory store backed by PostgreSQL, accessible over HTTP using the Memory Context Protocol (MCP). With postgram, your agents can save decisions, bugfixes, and summaries across sessions, enabling long-term context and learning.
 
-Postgram is a **remote MCP memory service** for coding agents. Run one Go binary, connect it to PostgreSQL, expose `/mcp`, and point your agents at it.
+**postgram** is a **remote MCP memory service** for coding agents. Run one Go binary, connect it to PostgreSQL, expose `/mcp`, and point your agents at it.
+
+**postgram** was forged from [engram](https://github.com/Gentleman-Programming/engram) and heavily inspired by its design, but tailored for team use.
 
 ```
 Agent (Claude Code / OpenCode / Gemini CLI / Codex / VS Code / ...)
@@ -209,7 +211,3 @@ postgram tui
 ## License
 
 MIT
-
----
-
-**Inspired by [claude-mem](https://github.com/thedotmack/claude-mem)** — but agent-agnostic, simpler, and built different.
