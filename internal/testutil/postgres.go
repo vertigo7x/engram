@@ -27,7 +27,7 @@ func NewPostgresURL(t *testing.T) string {
 	t.Helper()
 
 	postgresOnce.Do(func() {
-		if dsn := strings.TrimSpace(os.Getenv("ENGRAM_TEST_DATABASE_URL")); dsn != "" {
+		if dsn := strings.TrimSpace(os.Getenv("POSTGRAM_TEST_DATABASE_URL")); dsn != "" {
 			postgresDSN = dsn
 			return
 		}
@@ -41,9 +41,9 @@ func NewPostgresURL(t *testing.T) string {
 			Repository: "postgres",
 			Tag:        "16-alpine",
 			Env: []string{
-				"POSTGRES_USER=engram",
-				"POSTGRES_PASSWORD=engram",
-				"POSTGRES_DB=engram",
+				"POSTGRES_USER=postgram",
+				"POSTGRES_PASSWORD=postgram",
+				"POSTGRES_DB=postgram",
 			},
 		}, func(hostConfig *docker.HostConfig) {
 			hostConfig.AutoRemove = true
@@ -54,7 +54,7 @@ func NewPostgresURL(t *testing.T) string {
 		}
 		postgresResource.Expire(600)
 
-		base := fmt.Sprintf("postgres://engram:engram@127.0.0.1:%s/engram?sslmode=disable", postgresResource.GetPort("5432/tcp"))
+		base := fmt.Sprintf("postgres://postgram:postgram@127.0.0.1:%s/postgram?sslmode=disable", postgresResource.GetPort("5432/tcp"))
 		postgresErr = postgresPool.Retry(func() error {
 			db, err := sql.Open("postgres", base)
 			if err != nil {
@@ -73,11 +73,11 @@ func NewPostgresURL(t *testing.T) string {
 		t.Fatalf("start postgres test database: %v", postgresErr)
 	}
 
-	if strings.TrimSpace(os.Getenv("ENGRAM_TEST_DATABASE_URL")) != "" {
+	if strings.TrimSpace(os.Getenv("POSTGRAM_TEST_DATABASE_URL")) != "" {
 		return postgresDSN
 	}
 
-	dbName := "engram_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	dbName := "postgram_test_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	adminDB, err := sql.Open("postgres", postgresDSN)
 	if err != nil {
 		t.Fatalf("open postgres admin connection: %v", err)

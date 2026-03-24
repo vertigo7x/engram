@@ -2,7 +2,7 @@
 
 # Agent Setup
 
-Engram works with **any MCP-compatible agent**. Pick your agent below.
+Postgram works with **any MCP-compatible agent**. Pick your agent below.
 
 ## Quick Reference
 
@@ -12,26 +12,26 @@ Engram works with **any MCP-compatible agent**. Pick your agent below.
 | OpenCode | [Details](#opencode) |
 | Gemini CLI | [Details](#gemini-cli) |
 | Codex | [Details](#codex) |
-| VS Code | `code --add-mcp '{"name":"engram","url":"https://your-engram-host/mcp"}'` | [Details](#vs-code-copilot--claude-code-extension) |
+| VS Code | `code --add-mcp '{"name":"postgram","url":"https://your-postgram-host/mcp"}'` | [Details](#vs-code-copilot--claude-code-extension) |
 | Antigravity | Manual JSON config | [Details](#antigravity) |
 | Cursor | Manual JSON config | [Details](#cursor) |
 | Windsurf | Manual JSON config | [Details](#windsurf) |
-| Any MCP agent | Remote MCP URL (`https://your-engram-host/mcp`) | [Details](#any-other-mcp-agent) |
+| Any MCP agent | Remote MCP URL (`https://your-postgram-host/mcp`) | [Details](#any-other-mcp-agent) |
 
 ---
 
 ## OpenCode
 
-Configure OpenCode to use Engram as a remote MCP server:
+Configure OpenCode to use Postgram as a remote MCP server:
 
 Add to your `opencode.json` (global: `~/.config/opencode/opencode.json` or project-level; on Windows: `%APPDATA%\opencode\opencode.json`):
 
 ```json
 {
   "mcp": {
-    "engram": {
+    "postgram": {
       "type": "remote",
-      "url": "https://your-engram-host/mcp",
+      "url": "https://your-postgram-host/mcp",
       "enabled": true
     }
   }
@@ -42,21 +42,21 @@ Add to your `opencode.json` (global: `~/.config/opencode/opencode.json` or proje
 
 ## Claude Code
 
-Configure Claude Code to use Engram as a remote MCP server:
+Configure Claude Code to use Postgram as a remote MCP server:
 
 Add to your `.claude/settings.json` (project) or `~/.claude/settings.json` (global):
 
 ```json
 {
   "mcpServers": {
-    "engram": {
-      "url": "https://your-engram-host/mcp"
+    "postgram": {
+      "url": "https://your-postgram-host/mcp"
     }
   }
 }
 ```
 
-Add a [Surviving Compaction](#surviving-compaction-recommended) prompt to your `CLAUDE.md` so the agent remembers to use Engram after context resets.
+Add a [Surviving Compaction](#surviving-compaction-recommended) prompt to your `CLAUDE.md` so the agent remembers to use Postgram after context resets.
 
 ---
 
@@ -67,8 +67,8 @@ Add to your `~/.gemini/settings.json` (global) or `.gemini/settings.json` (proje
 ```json
 {
   "mcpServers": {
-    "engram": {
-      "url": "https://your-engram-host/mcp"
+    "postgram": {
+      "url": "https://your-postgram-host/mcp"
     }
   }
 }
@@ -83,8 +83,8 @@ Also add the Memory Protocol to your Gemini instructions so the agent knows when
 Add to your `~/.codex/config.toml` (Windows: `%APPDATA%\codex\config.toml`):
 
 ```toml
-[mcp_servers.engram]
-url = "https://your-engram-host/mcp"
+[mcp_servers.postgram]
+url = "https://your-postgram-host/mcp"
 ```
 
 Also add the Memory Protocol to your Codex instructions or compact prompt so the agent preserves session knowledge across context resets.
@@ -102,8 +102,8 @@ Add to `.vscode/mcp.json` in your project:
 ```json
 {
   "servers": {
-    "engram": {
-      "url": "https://your-engram-host/mcp"
+    "postgram": {
+      "url": "https://your-postgram-host/mcp"
     }
   }
 }
@@ -113,7 +113,7 @@ Add to `.vscode/mcp.json` in your project:
 
 1. Open Command Palette (`Cmd+Shift+P` / `Ctrl+Shift+P`)
 2. Run **MCP: Open User Configuration**
-3. Add the same `engram` server entry above to VS Code User `mcp.json`:
+3. Add the same `postgram` server entry above to VS Code User `mcp.json`:
    - macOS: `~/Library/Application Support/Code/User/mcp.json`
    - Linux: `~/.config/Code/User/mcp.json`
    - Windows: `%APPDATA%\Code\User\mcp.json`
@@ -121,12 +121,12 @@ Add to `.vscode/mcp.json` in your project:
 **Option C: CLI one-liner:**
 
 ```bash
-code --add-mcp "{\"name\":\"engram\",\"url\":\"https://your-engram-host/mcp\"}"
+code --add-mcp "{\"name\":\"postgram\",\"url\":\"https://your-postgram-host/mcp\"}"
 ```
 
 > **Using Claude Code extension in VS Code?** The Claude Code extension runs inside VS Code but uses its own MCP config. Follow the [Claude Code](#claude-code) instructions above — the `.claude/settings.json` config works whether you use Claude Code as a CLI or as a VS Code extension.
 
-> **Windows**: Make sure `engram.exe` is in your `PATH`. VS Code resolves MCP commands from the system PATH.
+> **Windows**: Make sure `postgram.exe` is in your `PATH`. VS Code resolves MCP commands from the system PATH.
 
 **Adding the Memory Protocol** (recommended — teaches the agent when to save and search memories):
 
@@ -135,9 +135,9 @@ Without the Memory Protocol, the agent has the tools but doesn't know WHEN to us
 **For Copilot:** Create a `.instructions.md` file in the VS Code User `prompts/` folder and paste the Memory Protocol from [DOCS.md](../DOCS.md#memory-protocol-full-text).
 
 Recommended file path:
-- macOS: `~/Library/Application Support/Code/User/prompts/engram-memory.instructions.md`
-- Linux: `~/.config/Code/User/prompts/engram-memory.instructions.md`
-- Windows: `%APPDATA%\Code\User\prompts\engram-memory.instructions.md`
+- macOS: `~/Library/Application Support/Code/User/prompts/postgram-memory.instructions.md`
+- Linux: `~/.config/Code/User/prompts/postgram-memory.instructions.md`
+- Windows: `%APPDATA%\Code\User\prompts\postgram-memory.instructions.md`
 
 **For any VS Code chat extension:** Add the Memory Protocol text to your extension's custom instructions or system prompt configuration.
 
@@ -160,8 +160,8 @@ See [Surviving Compaction](#surviving-compaction-recommended) for the minimal ve
 ```json
 {
   "mcpServers": {
-    "engram": {
-      "url": "https://your-engram-host/mcp"
+    "postgram": {
+      "url": "https://your-postgram-host/mcp"
     }
   }
 }
@@ -182,14 +182,14 @@ Add to your `.cursor/mcp.json` (same path on all platforms — it's project-rela
 ```json
 {
   "mcpServers": {
-    "engram": {
-      "url": "https://your-engram-host/mcp"
+    "postgram": {
+      "url": "https://your-postgram-host/mcp"
     }
   }
 }
 ```
 
-> **Windows**: Make sure `engram.exe` is in your `PATH`. Cursor resolves MCP commands from the system PATH.
+> **Windows**: Make sure `postgram.exe` is in your `PATH`. Cursor resolves MCP commands from the system PATH.
 
 > **Memory Protocol:** Add the Memory Protocol instructions to your `.cursorrules` file. See [DOCS.md](../DOCS.md#memory-protocol-full-text) for the full text, or use the minimal version from [Surviving Compaction](#surviving-compaction-recommended).
 
@@ -202,8 +202,8 @@ Add to your `~/.windsurf/mcp.json` (Windows: `%USERPROFILE%\.windsurf\mcp.json`)
 ```json
 {
   "mcpServers": {
-    "engram": {
-      "url": "https://your-engram-host/mcp"
+    "postgram": {
+      "url": "https://your-postgram-host/mcp"
     }
   }
 }
@@ -215,7 +215,7 @@ Add to your `~/.windsurf/mcp.json` (Windows: `%USERPROFILE%\.windsurf\mcp.json`)
 
 ## Any other MCP agent
 
-The pattern is always the same — point your agent's MCP config to your Engram MCP URL, for example `https://your-engram-host/mcp`.
+The pattern is always the same — point your agent's MCP config to your Postgram MCP URL, for example `https://your-postgram-host/mcp`.
 
 For local development on the same machine as the agent, `http://127.0.0.1:7437/mcp` is still a valid default.
 
@@ -223,12 +223,12 @@ For local development on the same machine as the agent, `http://127.0.0.1:7437/m
 
 ## Surviving Compaction (Recommended)
 
-When your agent compacts (summarizes long conversations to free context), it starts fresh — and might forget about Engram. To make memory truly resilient, add this to your agent's system prompt or config file:
+When your agent compacts (summarizes long conversations to free context), it starts fresh — and might forget about Postgram. To make memory truly resilient, add this to your agent's system prompt or config file:
 
 **For Claude Code** (`CLAUDE.md`):
 ```markdown
 ## Memory
-You have access to Engram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
+You have access to Postgram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
 - Save proactively after significant work — don't wait to be asked.
 - After any compaction or context reset, call `mem_context` to recover session state before continuing.
 ```
@@ -236,7 +236,7 @@ You have access to Engram persistent memory via MCP tools (mem_save, mem_search,
 **For Gemini CLI** (`GEMINI.md`):
 ```markdown
 ## Memory
-You have access to Engram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
+You have access to Postgram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
 - Save proactively after significant work — don't wait to be asked.
 - After any compaction or context reset, call `mem_context` to recover session state before continuing.
 ```
@@ -244,7 +244,7 @@ You have access to Engram persistent memory via MCP tools (mem_save, mem_search,
 **For VS Code** (`Code/User/prompts/*.instructions.md` or custom instructions):
 ```markdown
 ## Memory
-You have access to Engram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
+You have access to Postgram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
 - Save proactively after significant work — don't wait to be asked.
 - After any compaction or context reset, call `mem_context` to recover session state before continuing.
 ```
@@ -252,14 +252,14 @@ You have access to Engram persistent memory via MCP tools (mem_save, mem_search,
 **For Antigravity** (`~/.gemini/GEMINI.md` or `.agent/rules/`):
 ```markdown
 ## Memory
-You have access to Engram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
+You have access to Postgram persistent memory via MCP tools (mem_save, mem_search, mem_session_summary, etc.).
 - Save proactively after significant work — don't wait to be asked.
 - After any compaction or context reset, call `mem_context` to recover session state before continuing.
 ```
 
 **For Cursor/Windsurf** (`.cursorrules` or `.windsurfrules`):
 ```
-You have access to Engram persistent memory (mem_save, mem_search, mem_context).
+You have access to Postgram persistent memory (mem_save, mem_search, mem_context).
 Save proactively after significant work. After context resets, call mem_context to recover state.
 ```
 

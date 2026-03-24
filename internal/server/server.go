@@ -1,4 +1,4 @@
-// Package server provides the HTTP API for Engram.
+// Package server provides the HTTP API for Postgram.
 //
 // This is how external clients and agents communicate with the memory engine.
 // Simple JSON REST API.
@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/auth"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/postgram/internal/auth"
+	"github.com/Gentleman-Programming/postgram/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -95,9 +95,9 @@ func (s *Server) Start() error {
 
 	ln, err := listenFn("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("engram server: listen %s: %w", addr, err)
+		return fmt.Errorf("postgram server: listen %s: %w", addr, err)
 	}
-	log.Printf("[engram] HTTP server listening on %s", addr)
+	log.Printf("[postgram] HTTP server listening on %s", addr)
 	return serveFn(ln, s.mux)
 }
 
@@ -156,7 +156,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonResponse(w, http.StatusOK, map[string]any{
 		"status":  "ok",
-		"service": "engram",
+		"service": "postgram",
 		"version": version,
 	})
 }
@@ -464,7 +464,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Content-Disposition", "attachment; filename=engram-export.json")
+	w.Header().Set("Content-Disposition", "attachment; filename=postgram-export.json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(data)
 }
@@ -542,7 +542,7 @@ func (s *Server) handleMigrateProject(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.store.MigrateProject(body.OldProject, body.NewProject)
 	if err != nil {
-		log.Printf("[engram] project migration failed: %v", err)
+		log.Printf("[postgram] project migration failed: %v", err)
 		jsonError(w, http.StatusInternalServerError, "migration failed")
 		return
 	}
@@ -552,7 +552,7 @@ func (s *Server) handleMigrateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[engram] migrated project %q → %q (obs: %d, sessions: %d, prompts: %d)",
+	log.Printf("[postgram] migrated project %q → %q (obs: %d, sessions: %d, prompts: %d)",
 		body.OldProject, body.NewProject,
 		result.ObservationsUpdated, result.SessionsUpdated, result.PromptsUpdated)
 

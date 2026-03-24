@@ -1,16 +1,16 @@
-# Engram
+# Postgram
 
 **Persistent memory for AI coding agents**
 
-> *Engram* is a neuroscience term for the physical trace of a memory in the brain.
+> *Postgram* is a neuroscience term for the physical trace of a memory in the brain.
 
-## What is Engram?
+## What is Postgram?
 
 An agent-agnostic persistent memory system. A Go binary backed by PostgreSQL, exposed via CLI and HTTP API, including MCP over HTTP for remote and team-oriented use.
 
 **Why Go?** Single binary, cross-platform, no runtime dependencies. Uses PostgreSQL via `github.com/lib/pq` and serves CLI, HTTP, MCP, and TUI flows from one binary.
 
-- **Module**: `github.com/Gentleman-Programming/engram`
+- **Module**: `github.com/Gentleman-Programming/postgram`
 - **Version**: 0.1.0
 
 ---
@@ -22,25 +22,25 @@ The Go binary is the brain. Agents talk to it via HTTP, including MCP over HTTP.
 ```
 Agent (Claude Code/Cursor/Gemini/Codex/VS Code/etc.)
     ↓ MCP over HTTP
-Engram Go Binary / Service
+Postgram Go Binary / Service
     ↓
-PostgreSQL (`ENGRAM_DATABASE_URL`)
+PostgreSQL (`POSTGRAM_DATABASE_URL`)
 ```
 
 Six interfaces:
 
-1. **CLI** — Direct terminal usage (`engram search`, `engram save`, etc.)
+1. **CLI** — Direct terminal usage (`postgram search`, `postgram save`, etc.)
 2. **HTTP API** — REST API on port 7437 for integrations and automation
 3. **MCP Server** — HTTP transport for any MCP-compatible agent
-4. **TUI** — Interactive terminal UI for browsing memories (`engram tui`)
+4. **TUI** — Interactive terminal UI for browsing memories (`postgram tui`)
 
 ---
 
 ## Project Structure
 
 ```
-engram/
-├── cmd/engram/main.go              # CLI entrypoint — all commands
+postgram/
+├── cmd/postgram/main.go              # CLI entrypoint — all commands
 ├── internal/
 │   ├── store/store.go              # Core data layer: PostgreSQL + search
 │   ├── server/server.go            # HTTP REST API server (port 7437)
@@ -71,8 +71,8 @@ engram/
 
 ### PostgreSQL Configuration
 
-- Set `ENGRAM_DATABASE_URL=postgres://...`
-- `ENGRAM_DB_DRIVER` is deprecated and ignored; configure `ENGRAM_DATABASE_URL` instead
+- Set `POSTGRAM_DATABASE_URL=postgres://...`
+- `POSTGRAM_DB_DRIVER` is deprecated and ignored; configure `POSTGRAM_DATABASE_URL` instead
 - Search uses PostgreSQL `ILIKE` queries today
 - `sessions.id` is deterministic:
   - authenticated: derived from `iss + sub + client_session_id`
@@ -80,19 +80,19 @@ engram/
 
 ### MCP HTTP Transport
 
-- `engram serve` exposes MCP over HTTP by default
-- Endpoint path is configured with `ENGRAM_MCP_HTTP_PATH` (default `/mcp`)
-- Tool profile/filter is configured with `ENGRAM_MCP_TOOLS` (for example `agent`, `admin`, or `agent,admin`)
+- `postgram serve` exposes MCP over HTTP by default
+- Endpoint path is configured with `POSTGRAM_MCP_HTTP_PATH` (default `/mcp`)
+- Tool profile/filter is configured with `POSTGRAM_MCP_TOOLS` (for example `agent`, `admin`, or `agent,admin`)
 
 ### MCP OIDC JWT Authentication
 
-- Enable with `ENGRAM_MCP_AUTH_ENABLED=true`
+- Enable with `POSTGRAM_MCP_AUTH_ENABLED=true`
 - Required config:
-  - `ENGRAM_OIDC_ISSUER`
-  - `ENGRAM_OIDC_AUDIENCE`
+  - `POSTGRAM_OIDC_ISSUER`
+  - `POSTGRAM_OIDC_AUDIENCE`
 - Optional config:
-  - `ENGRAM_OIDC_JWKS_URL` (if omitted, discovery uses `/.well-known/openid-configuration`)
-  - `ENGRAM_OIDC_REQUIRED_SCOPE`
+  - `POSTGRAM_OIDC_JWKS_URL` (if omitted, discovery uses `/.well-known/openid-configuration`)
+  - `POSTGRAM_OIDC_REQUIRED_SCOPE`
 - Middleware expects `Authorization: Bearer <token>` and validates issuer/audience/signature (+ optional scope)
 - On auth failures, MCP HTTP returns OAuth-style `WWW-Authenticate: Bearer ...` including `resource_metadata`.
 - Exposes OAuth Protected Resource Metadata (RFC 9728) at `/.well-known/oauth-protected-resource`.
@@ -102,40 +102,40 @@ engram/
 ## CLI Commands
 
 ```
-engram serve [port]       Start HTTP API server (default: 7437)
-engram serve [port]       Start HTTP API + MCP over HTTP (default: 7437)
-engram tui                Launch interactive terminal UI
-engram search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
-engram save <title> <msg> Save a memory [--type TYPE] [--project PROJECT] [--scope SCOPE] [--topic TOPIC_KEY]
-engram timeline <obs_id>  Show chronological context around an observation [--before N] [--after N]
-engram context [project]  Show recent context from previous sessions
-engram stats              Show memory system statistics
-engram export [file]      Export all memories to JSON (default: engram-export.json)
-engram import <file>      Import memories from a JSON export file
-engram version            Print version
-engram help               Show help
+postgram serve [port]       Start HTTP API server (default: 7437)
+postgram serve [port]       Start HTTP API + MCP over HTTP (default: 7437)
+postgram tui                Launch interactive terminal UI
+postgram search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
+postgram save <title> <msg> Save a memory [--type TYPE] [--project PROJECT] [--scope SCOPE] [--topic TOPIC_KEY]
+postgram timeline <obs_id>  Show chronological context around an observation [--before N] [--after N]
+postgram context [project]  Show recent context from previous sessions
+postgram stats              Show memory system statistics
+postgram export [file]      Export all memories to JSON (default: postgram-export.json)
+postgram import <file>      Import memories from a JSON export file
+postgram version            Print version
+postgram help               Show help
 ```
 
 ### Environment Variables
 
 | Variable | Description | Default |
 |---|---|---|
-| `ENGRAM_DATA_DIR` | Override data directory | `~/.engram` |
-| `ENGRAM_DATABASE_URL` | PostgreSQL connection URL (required) | empty |
-| `ENGRAM_HOST` | HTTP bind host | `127.0.0.1` |
-| `ENGRAM_PORT` | Override HTTP server port | `7437` |
-| `ENGRAM_MCP_URL` | Explicit MCP URL used by generated agent configs | empty |
-| `ENGRAM_MCP_HTTP_PATH` | MCP HTTP endpoint path | `/mcp` |
-| `ENGRAM_MCP_TOOLS` | MCP tool profile/filter | `agent` |
-| `ENGRAM_MCP_AUTH_ENABLED` | Enable OIDC JWT auth for MCP HTTP | `false` |
-| `ENGRAM_OIDC_ISSUER` | OIDC issuer URL (required when auth enabled) | empty |
-| `ENGRAM_OIDC_AUDIENCE` | OIDC audience (required when auth enabled) | empty |
-| `ENGRAM_OIDC_JWKS_URL` | Optional JWKS URL override | empty |
-| `ENGRAM_OIDC_REQUIRED_SCOPE` | Optional required scope | empty |
-| `ENGRAM_BASE_URL` | Public base URL for metadata/challenges (for ingress) | empty |
-| `ENGRAM_OAUTH_RESOURCE_METADATA_PATH` | OAuth protected resource metadata path | `/.well-known/oauth-protected-resource` |
-| `ENGRAM_OAUTH_RESOURCE` | OAuth resource identifier (defaults to MCP URL) | empty |
-| `ENGRAM_OAUTH_AUTHORIZATION_SERVERS` | Comma-separated auth server URLs for PRM | `ENGRAM_OIDC_ISSUER` |
+| `POSTGRAM_DATA_DIR` | Override data directory | `~/.postgram` |
+| `POSTGRAM_DATABASE_URL` | PostgreSQL connection URL (required) | empty |
+| `POSTGRAM_HOST` | HTTP bind host | `127.0.0.1` |
+| `POSTGRAM_PORT` | Override HTTP server port | `7437` |
+| `POSTGRAM_MCP_URL` | Explicit MCP URL used by generated agent configs | empty |
+| `POSTGRAM_MCP_HTTP_PATH` | MCP HTTP endpoint path | `/mcp` |
+| `POSTGRAM_MCP_TOOLS` | MCP tool profile/filter | `agent` |
+| `POSTGRAM_MCP_AUTH_ENABLED` | Enable OIDC JWT auth for MCP HTTP | `false` |
+| `POSTGRAM_OIDC_ISSUER` | OIDC issuer URL (required when auth enabled) | empty |
+| `POSTGRAM_OIDC_AUDIENCE` | OIDC audience (required when auth enabled) | empty |
+| `POSTGRAM_OIDC_JWKS_URL` | Optional JWKS URL override | empty |
+| `POSTGRAM_OIDC_REQUIRED_SCOPE` | Optional required scope | empty |
+| `POSTGRAM_BASE_URL` | Public base URL for metadata/challenges (for ingress) | empty |
+| `POSTGRAM_OAUTH_RESOURCE_METADATA_PATH` | OAuth protected resource metadata path | `/.well-known/oauth-protected-resource` |
+| `POSTGRAM_OAUTH_RESOURCE` | OAuth resource identifier (defaults to MCP URL) | empty |
+| `POSTGRAM_OAUTH_AUTHORIZATION_SERVERS` | Comma-separated auth server URLs for PRM | `POSTGRAM_OIDC_ISSUER` |
 
 ---
 
@@ -144,44 +144,44 @@ engram help               Show help
 ### Docker
 
 ```bash
-docker build -t engram:local .
+docker build -t postgram:local .
 
 docker run --rm -p 7437:7437 \
-  -e ENGRAM_DATABASE_URL="postgres://user:pass@postgres:5432/engram?sslmode=disable" \
-  engram:local
+  -e POSTGRAM_DATABASE_URL="postgres://user:pass@postgres:5432/postgram?sslmode=disable" \
+  postgram:local
 ```
 
 ### Helm
 
-Chart location: `charts/engram`
+Chart location: `charts/postgram`
 
 ```bash
-helm install engram ./charts/engram
+helm install postgram ./charts/postgram
 
-helm install engram ./charts/engram \
-  --set database.url="postgres://user:pass@postgres:5432/engram?sslmode=disable"
+helm install postgram ./charts/postgram \
+  --set database.url="postgres://user:pass@postgres:5432/postgram?sslmode=disable"
 ```
 
-For public deployments, enable MCP auth with OIDC and expose a stable `ENGRAM_BASE_URL` so clients receive correct `resource_metadata` URLs in `WWW-Authenticate` challenges.
+For public deployments, enable MCP auth with OIDC and expose a stable `POSTGRAM_BASE_URL` so clients receive correct `resource_metadata` URLs in `WWW-Authenticate` challenges.
 
 ### Kubernetes Secrets for Database URL
 
 Avoid hardcoding `database.url` in shared values files. The chart supports secret-based DB URL injection:
 
 - `database.existingSecret`: existing Secret name containing DB URL
-- `database.urlSecretKey`: key name inside the Secret (default `ENGRAM_DATABASE_URL`)
+- `database.urlSecretKey`: key name inside the Secret (default `POSTGRAM_DATABASE_URL`)
 - `database.createSecret`: set `true` to have Helm create the Secret from `database.url`
 
 Recommended (pre-created Secret):
 
 ```bash
-kubectl create secret generic engram-db \
-  --from-literal=ENGRAM_DATABASE_URL='postgres://user:pass@postgres:5432/engram?sslmode=require' \
-  -n engram
+kubectl create secret generic postgram-db \
+  --from-literal=POSTGRAM_DATABASE_URL='postgres://user:pass@postgres:5432/postgram?sslmode=require' \
+  -n postgram
 
-helm upgrade --install engram ./charts/engram -n engram \
-  --set database.existingSecret=engram-db \
-  --set database.urlSecretKey=ENGRAM_DATABASE_URL
+helm upgrade --install postgram ./charts/postgram -n postgram \
+  --set database.existingSecret=postgram-db \
+  --set database.urlSecretKey=POSTGRAM_DATABASE_URL
 ```
 
 ### Keycloak Provider Setup (Local Example)
@@ -189,26 +189,26 @@ helm upgrade --install engram ./charts/engram -n engram \
 Reference setup for remote MCP HTTP:
 
 1. Keycloak realm (example: `Shared`).
-2. MCP OAuth client (example: `engram-local`):
+2. MCP OAuth client (example: `postgram-local`):
    - Standard Flow enabled
    - PKCE S256 enabled
    - Redirect URIs:
      - `http://127.0.0.1:*/mcp/oauth/callback`
      - `http://localhost:*/mcp/oauth/callback`
 3. Client scope (example: `mcp:tools`) with Audience mapper:
-   - Included Custom Audience: `engram-mcp`
+   - Included Custom Audience: `postgram-mcp`
 4. Assign scope to client (default or requested explicitly).
 
-Engram env alignment example:
+Postgram env alignment example:
 
 ```bash
-ENGRAM_MCP_AUTH_ENABLED=true
-ENGRAM_OIDC_ISSUER=http://localhost:28080/realms/Shared
-ENGRAM_OIDC_AUDIENCE=engram-mcp
-ENGRAM_OIDC_JWKS_URL=http://host.docker.internal:28080/realms/Shared/protocol/openid-connect/certs
-ENGRAM_BASE_URL=http://localhost:7437
-ENGRAM_OAUTH_RESOURCE=http://localhost:7437/mcp
-ENGRAM_OAUTH_AUTHORIZATION_SERVERS=http://localhost:28080/realms/Shared
+POSTGRAM_MCP_AUTH_ENABLED=true
+POSTGRAM_OIDC_ISSUER=http://localhost:28080/realms/Shared
+POSTGRAM_OIDC_AUDIENCE=postgram-mcp
+POSTGRAM_OIDC_JWKS_URL=http://host.docker.internal:28080/realms/Shared/protocol/openid-connect/certs
+POSTGRAM_BASE_URL=http://localhost:7437
+POSTGRAM_OAUTH_RESOURCE=http://localhost:7437/mcp
+POSTGRAM_OAUTH_AUTHORIZATION_SERVERS=http://localhost:28080/realms/Shared
 ```
 
 Example client config snippet:
@@ -217,12 +217,12 @@ Example client config snippet:
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "engram_remote": {
+    "postgram_remote": {
       "type": "remote",
       "url": "http://localhost:7437/mcp",
       "enabled": true,
       "oauth": {
-        "clientId": "engram-local",
+        "clientId": "postgram-local",
         "scope": "openid profile mcp:tools"
       }
     }
@@ -243,30 +243,30 @@ curl -i http://localhost:7437/.well-known/oauth-protected-resource
 
 ### Using systemd
 
-First you need add your engram binary to use in a global way. By example: `/usr/bin`, `/usr/local/bin` or `~/.local/bin`.
+First you need add your postgram binary to use in a global way. By example: `/usr/bin`, `/usr/local/bin` or `~/.local/bin`.
 In this documentation we will use `~/.local/bin`.
 
 1. First, move binary to `~/.local/bin` (Check if this is in your $PATH variable).
-2. Create a directory for you service with user scope and engram data: `mkdir -p ~/.engram ~/.config/systemd/user`.
-3. Create your service file in the following path: `~/.config/systemd/user/engram.service`.
+2. Create a directory for you service with user scope and postgram data: `mkdir -p ~/.postgram ~/.config/systemd/user`.
+3. Create your service file in the following path: `~/.config/systemd/user/postgram.service`.
 4. Reload service list: `systemctl --user daemon-reload`.
-5. Enable your service: `systemctl --user enable engram`.
-6. Then start it: `systemctl --user start engram`.
-7. And finally check the logs: `journalctl --user -u engram -f`.
+5. Enable your service: `systemctl --user enable postgram`.
+6. Then start it: `systemctl --user start postgram`.
+7. And finally check the logs: `journalctl --user -u postgram -f`.
 
-The following code is an example of the `~/.config/systemd/user/engram.service` file:
+The following code is an example of the `~/.config/systemd/user/postgram.service` file:
 
 ```shell
 [Unit]
-Description=Engram Memory Server
+Description=Postgram Memory Server
 After=network.target
 
 [Service]
 WorkingDirectory=%h
-ExecStart=%h/.local/bin/engram serve
+ExecStart=%h/.local/bin/postgram serve
 Restart=always
 RestartSec=3
-Environment=ENGRAM_DATA_DIR=%h/.engram
+Environment=POSTGRAM_DATA_DIR=%h/.postgram
 
 [Install]
 WantedBy=default.target
@@ -276,7 +276,7 @@ WantedBy=default.target
 
 ## Terminal UI (TUI)
 
-Interactive Bubbletea-based terminal UI. Launch with `engram tui`.
+Interactive Bubbletea-based terminal UI. Launch with `postgram tui`.
 
 Built with [Bubbletea](https://github.com/charmbracelet/bubbletea) v1, [Lipgloss](https://github.com/charmbracelet/lipgloss), and [Bubbles](https://github.com/charmbracelet/bubbles) components. Follows the Gentleman Bubbletea skill patterns.
 
@@ -332,7 +332,7 @@ All endpoints return JSON. Server listens on `127.0.0.1:7437`.
 
 ### Health
 
-- `GET /health` — Returns `{"status": "ok", "service": "engram", "version": "0.1.0"}`
+- `GET /health` — Returns `{"status": "ok", "service": "postgram", "version": "0.1.0"}`
 
 ### Sessions
 
@@ -460,15 +460,15 @@ Add to any agent's config:
 ```json
 {
   "mcp": {
-    "engram": {
+    "postgram": {
       "type": "remote",
-      "url": "https://your-engram-host/mcp"
+      "url": "https://your-postgram-host/mcp"
     }
   }
 }
 ```
 
-For local-only setups, `http://127.0.0.1:7437/mcp` is still valid. For team/shared deployments, use your public Engram URL.
+For local-only setups, `http://127.0.0.1:7437/mcp` is still valid. For team/shared deployments, use your public Postgram URL.
 
 
 
@@ -476,7 +476,7 @@ For local-only setups, `http://127.0.0.1:7437/mcp` is still valid. For team/shar
 
 ## Memory Protocol Full Text
 
-The Memory Protocol teaches agents **when** and **how** to use Engram's MCP tools. Without it, the agent has the tools but no behavioral guidance. Add this to your agent's prompt file (see README for per-agent locations).
+The Memory Protocol teaches agents **when** and **how** to use Postgram's MCP tools. Without it, the agent has the tools but no behavioral guidance. Add this to your agent's prompt file (see README for per-agent locations).
 
 ### WHEN TO SAVE (mandatory — not optional)
 
@@ -547,7 +547,7 @@ This is NOT optional. If you skip this, the next session starts blind.
 
 ### PASSIVE CAPTURE — automatic learning extraction
 
-When completing a task or subtask, include a `## Key Learnings:` section at the end of your response with numbered items. Engram will automatically extract and save these as observations.
+When completing a task or subtask, include a `## Key Learnings:` section at the end of your response with numbered items. Postgram will automatically extract and save these as observations.
 
 Example:
 ```
@@ -602,8 +602,8 @@ Separate table captures what the USER asked (not just tool calls). Gives future 
 
 Share memories across machines, backup, or migrate:
 
-- `engram export` — JSON dump of all sessions, observations, prompts
-- `engram import <file>` — Load from JSON, sessions use INSERT OR IGNORE (skip duplicates), atomic transaction
+- `postgram export` — JSON dump of all sessions, observations, prompts
+- `postgram import <file>` — Load from JSON, sessions use INSERT OR IGNORE (skip duplicates), atomic transaction
 
 ### 6. AI Compression (Agent-Driven)
 
@@ -634,7 +634,7 @@ The recommended setup is to add the **Memory Protocol** to your agent instructio
 
 ### 8. No Raw Auto-Capture (Agent-Only Memory)
 
-Engram does NOT auto-capture raw tool calls. All memory comes from the agent itself:
+Postgram does NOT auto-capture raw tool calls. All memory comes from the agent itself:
 
 - **`mem_save`** — Agent saves structured observations after significant work (decisions, bugfixes, patterns)
 - **`mem_session_summary`** — Agent saves comprehensive end-of-session summaries
@@ -660,19 +660,19 @@ Engram does NOT auto-capture raw tool calls. All memory comes from the agent its
 ### From source
 
 ```bash
-git clone https://github.com/alanbuscaglia/engram.git
-cd engram
-go build -o engram ./cmd/engram
-go install ./cmd/engram
+git clone https://github.com/alanbuscaglia/postgram.git
+cd postgram
+go build -o postgram ./cmd/postgram
+go install ./cmd/postgram
 ```
 
 ### Binary location
 
-After `go install`: `$GOPATH/bin/engram` (typically `~/go/bin/engram`)
+After `go install`: `$GOPATH/bin/postgram` (typically `~/go/bin/postgram`)
 
 ### Database requirement
 
-Set `ENGRAM_DATABASE_URL` before running Engram.
+Set `POSTGRAM_DATABASE_URL` before running Postgram.
 
 ---
 
@@ -703,6 +703,6 @@ Key differences from claude-mem:
 ### Session Identity
 
 - Clients send a `client_session_id` when creating or using a session.
-- Engram derives the stored session primary key from `issuer + subject + client_session_id` when authenticated.
+- Postgram derives the stored session primary key from `issuer + subject + client_session_id` when authenticated.
 - This prevents different users from colliding on weak client ids like `manual-save`.
 - In unauthenticated flows, the effective session id is deterministically derived from the client-provided session id.

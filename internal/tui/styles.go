@@ -2,7 +2,7 @@ package tui
 
 import "github.com/charmbracelet/lipgloss"
 
-// ─── Colors (Engram Elephant palette) ─────────────────────────────────────────
+// ─── Colors (Postgram Elephant palette) ─────────────────────────────────────────
 
 var (
 	colorBase     = lipgloss.Color("#191724") // Deep purple/black base

@@ -1,4 +1,4 @@
-// Package version checks for newer engram releases on GitHub.
+// Package version checks for newer postgram releases on GitHub.
 package version
 
 import (
@@ -13,7 +13,7 @@ import (
 
 const (
 	repoOwner    = "Gentleman-Programming"
-	repoName     = "engram"
+	repoName     = "postgram"
 	checkTimeout = 2 * time.Second
 )
 
@@ -116,10 +116,10 @@ func splitVersion(v string) [3]int {
 func updateInstructions() string {
 	switch runtime.GOOS {
 	case "darwin":
-		return "  brew update && brew upgrade engram"
+		return "  brew update && brew upgrade postgram"
 	case "linux":
-		return "  brew update && brew upgrade engram\n  or: go install github.com/Gentleman-Programming/engram/cmd/engram@latest"
+		return "  brew update && brew upgrade postgram\n  or: go install github.com/Gentleman-Programming/postgram/cmd/postgram@latest"
 	default:
-		return "  go install github.com/Gentleman-Programming/engram/cmd/engram@latest\n  or: https://github.com/Gentleman-Programming/engram/releases/latest"
+		return "  go install github.com/Gentleman-Programming/postgram/cmd/postgram@latest\n  or: https://github.com/Gentleman-Programming/postgram/releases/latest"
 	}
 }

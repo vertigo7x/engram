@@ -1,4 +1,4 @@
-// Package tui implements the Bubbletea terminal UI for Engram.
+// Package tui implements the Bubbletea terminal UI for Postgram.
 //
 // Following the Gentleman Bubbletea patterns:
 // - Screen constants as iota
@@ -10,8 +10,8 @@
 package tui
 
 import (
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/version"
+	"github.com/Gentleman-Programming/postgram/internal/store"
+	"github.com/Gentleman-Programming/postgram/internal/version"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

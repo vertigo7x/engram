@@ -1,7 +1,7 @@
 ---
-name: engram-testing-coverage
+name: postgram-testing-coverage
 description: >
-  TDD and coverage standards for Engram.
+  TDD and coverage standards for Postgram.
   Trigger: When implementing behavior changes in any package.
 license: Apache-2.0
 metadata:

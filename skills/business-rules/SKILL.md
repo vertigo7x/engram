@@ -1,7 +1,7 @@
 ---
-name: engram-business-rules
+name: postgram-business-rules
 description: >
-  Product and business-rule guardrails for Engram. Trigger: Any change that
+  Product and business-rule guardrails for Postgram. Trigger: Any change that
   affects remote access, project controls, permissions, or memory semantics.
 license: Apache-2.0
 metadata:

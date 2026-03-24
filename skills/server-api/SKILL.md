@@ -1,7 +1,7 @@
 ---
-name: engram-server-api
+name: postgram-server-api
 description: >
-  API contract guardrails for Engram server changes.
+  API contract guardrails for Postgram server changes.
   Trigger: Any route, handler, payload, or status code modification.
 license: Apache-2.0
 metadata:

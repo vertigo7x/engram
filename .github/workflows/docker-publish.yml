@@ -16,7 +16,7 @@ jobs:
     name: Build and Publish Docker Image
     runs-on: ubuntu-latest
     env:
-      DEFAULT_IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/engram
+      DEFAULT_IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/postgram
     steps:
       - name: Checkout
         uses: actions/checkout@v4

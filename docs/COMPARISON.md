@@ -2,9 +2,9 @@
 
 # Why Not claude-mem?
 
-[claude-mem](https://github.com/thedotmack/claude-mem) is a great project (28K+ stars!) that inspired Engram. But we made fundamentally different design decisions:
+[claude-mem](https://github.com/thedotmack/claude-mem) is a great project (28K+ stars!) that inspired Postgram. But we made fundamentally different design decisions:
 
-| | **Engram** | **claude-mem** |
+| | **Postgram** | **claude-mem** |
 |---|---|---|
 | **Language** | Go (single binary, zero runtime deps) | TypeScript + Python (needs Node.js, Bun, uv) |
 | **Agent lock-in** | None. Works with any MCP agent | Claude Code only |
@@ -14,7 +14,7 @@
 | **Dependencies** | `go install` and done | Node.js 18+, Bun, uv, Python, ChromaDB |
 | **Processes** | One binary (HTTP API + MCP HTTP) | Worker service on port 37777 + ChromaDB |
 | **Database** | PostgreSQL only | SQLite + ChromaDB (two storage systems) |
-| **Web UI** | Terminal TUI (`engram tui`) | Web viewer on localhost:37777 |
+| **Web UI** | Terminal TUI (`postgram tui`) | Web viewer on localhost:37777 |
 | **Privacy** | `<private>` tags stripped at 2 layers | `<private>` tags stripped |
 | **Auto-capture** | No. Agent decides what matters | Yes. Captures all tool calls then compresses |
 | **License** | MIT | AGPL-3.0 |
@@ -28,7 +28,7 @@
 - Requires a worker process, ChromaDB, and multiple runtimes
 - Locked to Claude Code-specific integration patterns
 
-**Engram** lets the agent decide what's worth remembering. The agent already has the LLM, the context, and understands what just happened. Why run a separate compression pipeline?
+**Postgram** lets the agent decide what's worth remembering. The agent already has the LLM, the context, and understands what just happened. Why run a separate compression pipeline?
 
 - `mem_save` after a bugfix: *"Fixed N+1 query — added eager loading in UserList"*
 - `mem_session_summary` at session end: structured Goal/Discoveries/Accomplished/Files

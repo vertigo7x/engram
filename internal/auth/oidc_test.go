@@ -23,7 +23,7 @@ func TestOIDCVerifierAndMiddleware(t *testing.T) {
 	}
 
 	issuer := "https://issuer.example"
-	aud := "engram-mcp"
+	aud := "postgram-mcp"
 
 	n := base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes())
 	e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes())
@@ -57,7 +57,7 @@ func TestOIDCVerifierAndMiddleware(t *testing.T) {
 		Audience:      aud,
 		JWKSURL:       server.URL + jwksPath,
 		RefreshAfter:  time.Millisecond,
-		RequiredScope: "engram.mcp",
+		RequiredScope: "postgram.mcp",
 	})
 	if err != nil {
 		t.Fatalf("new verifier: %v", err)
@@ -68,7 +68,7 @@ func TestOIDCVerifierAndMiddleware(t *testing.T) {
 		"aud":   aud,
 		"exp":   time.Now().Add(5 * time.Minute).Unix(),
 		"iat":   time.Now().Add(-1 * time.Minute).Unix(),
-		"scope": "engram.mcp other",
+		"scope": "postgram.mcp other",
 		"sub":   "user-1",
 	})
 	token.Header["kid"] = "k1"
@@ -120,7 +120,7 @@ func TestOIDCVerifierAndMiddleware(t *testing.T) {
 	forbiddenReq := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	forbiddenReq.Header.Set("Authorization", "Bearer "+noScopeTokenStr)
 	forbiddenRec := httptest.NewRecorder()
-	Middleware(verifier, MiddlewareConfig{RequiredScope: "engram.mcp"})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	Middleware(verifier, MiddlewareConfig{RequiredScope: "postgram.mcp"})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})).ServeHTTP(forbiddenRec, forbiddenReq)
 	if forbiddenRec.Code != http.StatusForbidden {

@@ -1,7 +1,7 @@
-// Package store implements the persistent memory engine for Engram.
+// Package store implements the persistent memory engine for Postgram.
 //
 // It uses PostgreSQL to store and retrieve observations from AI coding sessions.
-// This is the core of Engram —
+// This is the core of Postgram —
 // everything else (HTTP server, MCP server, CLI, TUI) talks to this.
 package store
 
@@ -210,7 +210,7 @@ type AddPromptParams struct {
 
 var ErrSessionAuthorConflict = errors.New("session already belongs to a different authenticated user")
 
-// ExportData is the full serializable dump of the engram database.
+// ExportData is the full serializable dump of the postgram database.
 type ExportData struct {
 	Version      string        `json:"version"`
 	ExportedAt   string        `json:"exported_at"`
@@ -428,21 +428,21 @@ func New(cfg Config) (*Store, error) {
 	}
 
 	if driver != "postgres" && driver != "postgresql" {
-		return nil, fmt.Errorf("engram: sqlite support has been removed; use postgres and set ENGRAM_DATABASE_URL")
+		return nil, fmt.Errorf("postgram: sqlite support has been removed; use postgres and set POSTGRAM_DATABASE_URL")
 	}
 	driver = "postgres"
 	if strings.TrimSpace(cfg.DatabaseURL) == "" {
-		return nil, fmt.Errorf("engram: ENGRAM_DATABASE_URL is required")
+		return nil, fmt.Errorf("postgram: POSTGRAM_DATABASE_URL is required")
 	}
 	db, err := openDB("postgres", cfg.DatabaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("engram: open postgres database: %w", err)
+		return nil, fmt.Errorf("postgram: open postgres database: %w", err)
 	}
 
 	s := &Store{db: db, cfg: cfg, hooks: defaultStoreHooks(), driver: driver}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
-		return nil, fmt.Errorf("engram: migration: %w", err)
+		return nil, fmt.Errorf("postgram: migration: %w", err)
 	}
 
 	return s, nil

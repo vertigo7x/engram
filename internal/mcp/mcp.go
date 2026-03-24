@@ -1,16 +1,16 @@
-// Package mcp implements the Model Context Protocol server for Engram.
+// Package mcp implements the Model Context Protocol server for Postgram.
 //
 // This exposes memory tools via MCP transport so ANY agent
-// (OpenCode, Claude Code, Cursor, Windsurf, etc.) can use Engram's
+// (OpenCode, Claude Code, Cursor, Windsurf, etc.) can use Postgram's
 // persistent memory just by adding it as an MCP server.
 //
 // Tool profiles allow agents to load only the tools they need:
 //
-//	ENGRAM_MCP_TOOLS=all          → all 14 tools
-//	ENGRAM_MCP_TOOLS=agent        → 11 tools agents actually use (per skill files)
-//	ENGRAM_MCP_TOOLS=admin        → 3 tools for TUI/CLI (delete, stats, timeline)
-//	ENGRAM_MCP_TOOLS=agent,admin  → combine profiles
-//	ENGRAM_MCP_TOOLS=mem_save,mem_search → individual tool names
+//	POSTGRAM_MCP_TOOLS=all          → all 14 tools
+//	POSTGRAM_MCP_TOOLS=agent        → 11 tools agents actually use (per skill files)
+//	POSTGRAM_MCP_TOOLS=admin        → 3 tools for TUI/CLI (delete, stats, timeline)
+//	POSTGRAM_MCP_TOOLS=agent,admin  → combine profiles
+//	POSTGRAM_MCP_TOOLS=mem_save,mem_search → individual tool names
 package mcp
 
 import (
@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Gentleman-Programming/engram/internal/auth"
-	"github.com/Gentleman-Programming/engram/internal/store"
+	"github.com/Gentleman-Programming/postgram/internal/auth"
+	"github.com/Gentleman-Programming/postgram/internal/store"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -82,9 +82,9 @@ var ProfileAgent = map[string]bool{
 // ProfileAdmin contains tools for TUI, dashboards, and manual curation
 // that are NOT referenced in any agent skill or memory protocol.
 var ProfileAdmin = map[string]bool{
-	"mem_delete":   true, // only in OpenCode's ENGRAM_TOOLS filter, not in any agent instructions
-	"mem_stats":    true, // only in OpenCode's ENGRAM_TOOLS filter, not in any agent instructions
-	"mem_timeline": true, // only in OpenCode's ENGRAM_TOOLS filter, not in any agent instructions
+	"mem_delete":   true, // only in OpenCode's POSTGRAM_TOOLS filter, not in any agent instructions
+	"mem_stats":    true, // only in OpenCode's POSTGRAM_TOOLS filter, not in any agent instructions
+	"mem_timeline": true, // only in OpenCode's POSTGRAM_TOOLS filter, not in any agent instructions
 }
 
 // Profiles maps profile names to their tool sets.
@@ -133,9 +133,9 @@ func NewServer(s *store.Store) *server.MCPServer {
 }
 
 // serverInstructions tells MCP clients (especially Claude Code's Tool Search)
-// when to search for Engram's tools. This string is returned in the
+// when to search for Postgram's tools. This string is returned in the
 // initialize response and may be added to the system prompt by clients.
-const serverInstructions = `Engram provides persistent memory that survives across sessions and context ` +
+const serverInstructions = `Postgram provides persistent memory that survives across sessions and context ` +
 	`compactions. Search these tools when you need to: save decisions, bugs, ` +
 	`architecture choices, or discoveries to memory; recall or search past work ` +
 	`from previous sessions; manage coding session lifecycle (start, end, ` +
@@ -147,7 +147,7 @@ const serverInstructions = `Engram provides persistent memory that survives acro
 // the allowlist. If allowlist is nil, all tools are registered.
 func NewServerWithTools(s *store.Store, allowlist map[string]bool) *server.MCPServer {
 	srv := server.NewMCPServer(
-		"engram",
+		"postgram",
 		"0.1.0",
 		server.WithToolCapabilities(true),
 		server.WithInstructions(serverInstructions),

@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Gentleman-Programming/engram/internal/store"
-	"github.com/Gentleman-Programming/engram/internal/testutil"
+	"github.com/Gentleman-Programming/postgram/internal/store"
+	"github.com/Gentleman-Programming/postgram/internal/testutil"
 )
 
 type stubListener struct{}
@@ -104,7 +104,7 @@ func TestAdditionalServerErrorBranches(t *testing.T) {
 	srv := New(st, 0, "test-version")
 	h := srv.Handler()
 
-	createReq := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader(`{"id":"s-test","project":"engram"}`))
+	createReq := httptest.NewRequest(http.MethodPost, "/sessions", strings.NewReader(`{"id":"s-test","project":"postgram"}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
 	h.ServeHTTP(createRec, createReq)
@@ -175,7 +175,7 @@ func TestOnWriteCalledAfterSuccessfulWrites(t *testing.T) {
 
 	// Create session → should trigger onWrite.
 	createReq := httptest.NewRequest(http.MethodPost, "/sessions",
-		strings.NewReader(`{"id":"s-test","project":"engram"}`))
+		strings.NewReader(`{"id":"s-test","project":"postgram"}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	createRec := httptest.NewRecorder()
 	h.ServeHTTP(createRec, createReq)

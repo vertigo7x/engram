@@ -1,6 +1,6 @@
-# Contributing to Engram
+# Contributing to Postgram
 
-Thanks for contributing. Engram enforces a strict **issue-first workflow** — every change starts with an approved issue.
+Thanks for contributing. Postgram enforces a strict **issue-first workflow** — every change starts with an approved issue.
 
 ---
 
@@ -90,7 +90,7 @@ All five checks must pass before a PR can be merged.
 
 - Keep PR scope focused (one logical change)
 - Include validation evidence (`go test ./...`, targeted tests)
-- If charts change, include `helm lint charts/engram` output
+- If charts change, include `helm lint charts/postgram` output
 - Update docs in the same PR when behavior changes
 - Do not reference endpoints/scripts that do not exist in code
 - Do not include `Co-Authored-By` trailers in commits

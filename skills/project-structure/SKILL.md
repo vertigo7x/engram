@@ -1,7 +1,7 @@
 ---
-name: engram-project-structure
+name: postgram-project-structure
 description: >
-  Repository structure and placement rules for Engram. Trigger: Creating files,
+  Repository structure and placement rules for Postgram. Trigger: Creating files,
   packages, handlers, templates, styles, or tests in this repo.
 license: Apache-2.0
 metadata:

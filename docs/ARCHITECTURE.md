@@ -21,9 +21,9 @@
   <em>The agent proactively calls <code>mem_save</code> after significant work — structured, searchable, no noise.</em>
 </p>
 
-Engram trusts the **agent** to decide what's worth remembering — not a firehose of raw tool calls.
+Postgram trusts the **agent** to decide what's worth remembering — not a firehose of raw tool calls.
 
-### The Agent Saves, Engram Stores
+### The Agent Saves, Postgram Stores
 
 ```
 1. Agent completes significant work (bugfix, architecture decision, etc.)
@@ -31,7 +31,7 @@ Engram trusts the **agent** to decide what's worth remembering — not a firehos
    - title: "Fixed N+1 query in user list"
    - type: "bugfix"
    - content: What/Why/Where/Learned format
-3. Engram persists to PostgreSQL
+3. Postgram persists to PostgreSQL
 4. Next session: agent searches memory, gets relevant context
 ```
 
@@ -117,8 +117,8 @@ Different topics should use different keys (e.g. `architecture/auth-model` vs `b
 ## Project Structure
 
 ```
-engram/
-├── cmd/engram/main.go              # CLI entrypoint
+postgram/
+├── cmd/postgram/main.go              # CLI entrypoint
 ├── internal/
 │   ├── store/store.go              # Core: PostgreSQL + all data ops
 │   ├── server/server.go            # HTTP REST API (port 7437)
@@ -129,7 +129,7 @@ engram/
 │       ├── styles.go               # Lipgloss styles (Catppuccin Mocha)
 │       ├── update.go               # Input handling, per-screen handlers
 │       └── view.go                 # Rendering, per-screen views
-├── skills/                         # Contributor AI skills (repo-wide standards + Engram-specific guardrails)
+├── skills/                         # Contributor AI skills (repo-wide standards + Postgram-specific guardrails)
 ├── assets/                         # Screenshots and media
 ├── DOCS.md                         # Full technical documentation
 ├── CONTRIBUTING.md                 # Contribution workflow and standards
@@ -142,15 +142,15 @@ engram/
 ## CLI Reference
 
 ```
-engram serve [port]       Start HTTP API server (default: 7437)
-engram serve [port]       Start HTTP API + MCP over HTTP
-engram tui                Launch interactive terminal UI
-engram search <query>     Search memories
-engram save <title> <msg> Save a memory
-engram timeline <obs_id>  Chronological context around an observation
-engram context [project]  Recent context from previous sessions
-engram stats              Memory statistics
-engram export [file]      Export all memories to JSON
-engram import <file>      Import memories from JSON
-engram version            Show version
+postgram serve [port]       Start HTTP API server (default: 7437)
+postgram serve [port]       Start HTTP API + MCP over HTTP
+postgram tui                Launch interactive terminal UI
+postgram search <query>     Search memories
+postgram save <title> <msg> Save a memory
+postgram timeline <obs_id>  Chronological context around an observation
+postgram context [project]  Recent context from previous sessions
+postgram stats              Memory statistics
+postgram export [file]      Export all memories to JSON
+postgram import <file>      Import memories from JSON
+postgram version            Show version
 ```

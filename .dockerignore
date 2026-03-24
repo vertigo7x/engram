@@ -1,8 +1,5 @@
 .git
 .github
-.engram
 assets
 skills
-cmd/engram/main
-cmd/engram/gentle-creation
 *.md

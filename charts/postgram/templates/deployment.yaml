@@ -1,0 +1,123 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "postgram.fullname" . }}
+  labels:
+    {{- include "postgram.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "postgram.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "postgram.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        {{- toYaml .Values.podAnnotations | nindent 8 }}
+    spec:
+      containers:
+        - name: postgram
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - serve
+          env:
+            - name: POSTGRAM_HOST
+              value: "0.0.0.0"
+            - name: POSTGRAM_PORT
+              value: {{ .Values.service.port | quote }}
+            - name: POSTGRAM_MCP_HTTP_PATH
+              value: {{ .Values.mcp.httpPath | quote }}
+            - name: POSTGRAM_MCP_TOOLS
+              value: {{ .Values.mcp.tools | quote }}
+            {{- if .Values.mcp.baseUrl }}
+            - name: POSTGRAM_BASE_URL
+              value: {{ .Values.mcp.baseUrl | quote }}
+            {{- end }}
+            {{- if and (not .Values.database.existingSecret) (not .Values.database.createSecret) .Values.database.url }}
+            - name: POSTGRAM_DATABASE_URL
+              value: {{ .Values.database.url | quote }}
+            {{- end }}
+            {{- if .Values.database.existingSecret }}
+            - name: POSTGRAM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret | quote }}
+                  key: {{ .Values.database.urlSecretKey | quote }}
+            {{- else if and .Values.database.createSecret .Values.database.url }}
+            - name: POSTGRAM_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "postgram.fullname" . }}
+                  key: {{ .Values.database.urlSecretKey | quote }}
+            {{- end }}
+            - name: POSTGRAM_MCP_AUTH_ENABLED
+              value: {{ .Values.mcp.auth.enabled | quote }}
+            {{- if .Values.mcp.auth.oidcIssuer }}
+            - name: POSTGRAM_OIDC_ISSUER
+              value: {{ .Values.mcp.auth.oidcIssuer | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.oidcAudience }}
+            - name: POSTGRAM_OIDC_AUDIENCE
+              value: {{ .Values.mcp.auth.oidcAudience | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.jwksUrl }}
+            - name: POSTGRAM_OIDC_JWKS_URL
+              value: {{ .Values.mcp.auth.jwksUrl | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.requiredScope }}
+            - name: POSTGRAM_OIDC_REQUIRED_SCOPE
+              value: {{ .Values.mcp.auth.requiredScope | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.resourceMetadataPath }}
+            - name: POSTGRAM_OAUTH_RESOURCE_METADATA_PATH
+              value: {{ .Values.mcp.auth.resourceMetadataPath | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.resource }}
+            - name: POSTGRAM_OAUTH_RESOURCE
+              value: {{ .Values.mcp.auth.resource | quote }}
+            {{- end }}
+            {{- if .Values.mcp.auth.authorizationServers }}
+            - name: POSTGRAM_OAUTH_AUTHORIZATION_SERVERS
+              value: {{ .Values.mcp.auth.authorizationServers | quote }}
+            {{- end }}
+            - name: POSTGRAM_DATA_DIR
+              value: /data
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: postgram-data
+              mountPath: /data
+      volumes:
+        - name: postgram-data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "postgram.fullname" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      nodeSelector:
+        {{- toYaml .Values.nodeSelector | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.affinity | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.tolerations | nindent 8 }}

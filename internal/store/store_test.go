@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Gentleman-Programming/engram/internal/testutil"
+	"github.com/Gentleman-Programming/postgram/internal/testutil"
 	"github.com/google/uuid"
 )
 
@@ -73,7 +73,7 @@ func (f *fakeRows) Close() error {
 func TestAddObservationDeduplicatesWithinWindow(t *testing.T) {
 	s := newTestStore(t)
 
-	params := CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}
+	params := CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}
 	if err := s.CreateSession(params); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestAddObservationDeduplicatesWithinWindow(t *testing.T) {
 		Type:      "bugfix",
 		Title:     "Fixed tokenizer",
 		Content:   "Normalized tokenizer panic on edge case",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -95,7 +95,7 @@ func TestAddObservationDeduplicatesWithinWindow(t *testing.T) {
 		Type:      "bugfix",
 		Title:     "Fixed tokenizer",
 		Content:   "normalized   tokenizer panic on EDGE case",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -118,7 +118,7 @@ func TestAddObservationDeduplicatesWithinWindow(t *testing.T) {
 func TestScopeFiltersSearchAndContext(t *testing.T) {
 	s := newTestStore(t)
 
-	params := CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}
+	params := CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}
 	if err := s.CreateSession(params); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -128,7 +128,7 @@ func TestScopeFiltersSearchAndContext(t *testing.T) {
 		Type:      "decision",
 		Title:     "Project auth",
 		Content:   "Keep auth middleware in project memory",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -140,14 +140,14 @@ func TestScopeFiltersSearchAndContext(t *testing.T) {
 		Type:      "decision",
 		Title:     "Personal note",
 		Content:   "Use this regex trick later",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "personal",
 	})
 	if err != nil {
 		t.Fatalf("add personal observation: %v", err)
 	}
 
-	projectResults, err := s.Search("regex", SearchOptions{Project: "engram", Scope: "project", Limit: 10})
+	projectResults, err := s.Search("regex", SearchOptions{Project: "postgram", Scope: "project", Limit: 10})
 	if err != nil {
 		t.Fatalf("search project scope: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestScopeFiltersSearchAndContext(t *testing.T) {
 		t.Fatalf("expected no project-scope regex results, got %d", len(projectResults))
 	}
 
-	personalResults, err := s.Search("regex", SearchOptions{Project: "engram", Scope: "personal", Limit: 10})
+	personalResults, err := s.Search("regex", SearchOptions{Project: "postgram", Scope: "personal", Limit: 10})
 	if err != nil {
 		t.Fatalf("search personal scope: %v", err)
 	}
@@ -163,7 +163,7 @@ func TestScopeFiltersSearchAndContext(t *testing.T) {
 		t.Fatalf("expected 1 personal-scope result, got %d", len(personalResults))
 	}
 
-	ctx, err := s.FormatContext("engram", "personal")
+	ctx, err := s.FormatContext("postgram", "personal")
 	if err != nil {
 		t.Fatalf("format context personal: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestScopeFiltersSearchAndContext(t *testing.T) {
 func TestUpdateAndSoftDeleteExcludedFromSearchAndTimeline(t *testing.T) {
 	s := newTestStore(t)
 
-	params := CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}
+	params := CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}
 	if err := s.CreateSession(params); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestUpdateAndSoftDeleteExcludedFromSearchAndTimeline(t *testing.T) {
 		Type:      "bugfix",
 		Title:     "first",
 		Content:   "first event",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -200,7 +200,7 @@ func TestUpdateAndSoftDeleteExcludedFromSearchAndTimeline(t *testing.T) {
 		Type:      "bugfix",
 		Title:     "middle",
 		Content:   "to be deleted",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -212,7 +212,7 @@ func TestUpdateAndSoftDeleteExcludedFromSearchAndTimeline(t *testing.T) {
 		Type:      "bugfix",
 		Title:     "last",
 		Content:   "last event",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -242,7 +242,7 @@ func TestUpdateAndSoftDeleteExcludedFromSearchAndTimeline(t *testing.T) {
 		t.Fatalf("expected deleted observation to be hidden from GetObservation")
 	}
 
-	searchResults, err := s.Search("deleted", SearchOptions{Project: "engram", Limit: 10})
+	searchResults, err := s.Search("deleted", SearchOptions{Project: "postgram", Limit: 10})
 	if err != nil {
 		t.Fatalf("search after delete: %v", err)
 	}
@@ -276,7 +276,7 @@ func TestUpdateAndSoftDeleteExcludedFromSearchAndTimeline(t *testing.T) {
 func TestTopicKeyUpsertUpdatesSameTopicWithoutCreatingNewRow(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -285,7 +285,7 @@ func TestTopicKeyUpsertUpdatesSameTopicWithoutCreatingNewRow(t *testing.T) {
 		Type:      "architecture",
 		Title:     "Auth architecture",
 		Content:   "Use middleware for JWT validation.",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 		TopicKey:  "architecture auth model",
 	})
@@ -298,7 +298,7 @@ func TestTopicKeyUpsertUpdatesSameTopicWithoutCreatingNewRow(t *testing.T) {
 		Type:      "architecture",
 		Title:     "Auth architecture",
 		Content:   "Move auth to gateway + middleware chain.",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 		TopicKey:  "ARCHITECTURE   AUTH  MODEL",
 	})
@@ -328,7 +328,7 @@ func TestTopicKeyUpsertUpdatesSameTopicWithoutCreatingNewRow(t *testing.T) {
 func TestDifferentTopicsDoNotReplaceEachOther(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -337,7 +337,7 @@ func TestDifferentTopicsDoNotReplaceEachOther(t *testing.T) {
 		Type:      "architecture",
 		Title:     "Auth architecture",
 		Content:   "Architecture decision",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 		TopicKey:  "architecture/auth",
 	})
@@ -350,7 +350,7 @@ func TestDifferentTopicsDoNotReplaceEachOther(t *testing.T) {
 		Type:      "bugfix",
 		Title:     "Fix auth nil panic",
 		Content:   "Bugfix details",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 		TopicKey:  "bug/auth-nil-panic",
 	})
@@ -362,7 +362,7 @@ func TestDifferentTopicsDoNotReplaceEachOther(t *testing.T) {
 		t.Fatalf("expected different topic keys to create different observations")
 	}
 
-	observations, err := s.AllObservations("engram", "project", 10)
+	observations, err := s.AllObservations("postgram", "project", 10)
 	if err != nil {
 		t.Fatalf("all observations: %v", err)
 	}
@@ -377,14 +377,14 @@ func TestImportNormalizesLegacyObservationIDs(t *testing.T) {
 		Sessions: []Session{{
 			ID:              "s1",
 			ClientSessionID: "s1",
-			Project:         "engram",
-			Directory:       "/tmp/engram",
+			Project:         "postgram",
+			Directory:       "/tmp/postgram",
 			StartedAt:       Now(),
 		}},
 		Observations: []Observation{
-			{ID: "", SyncID: "", SessionID: "s1", Type: "bugfix", Title: "legacy null", Content: "legacy null content", Project: nullableString("engram"), Scope: "project", CreatedAt: Now(), UpdatedAt: Now()},
-			{ID: "7", SyncID: "obs-legacy-fixed", SessionID: "s1", Type: "bugfix", Title: "legacy fixed", Content: "legacy fixed content", Project: nullableString("engram"), Scope: "project", CreatedAt: Now(), UpdatedAt: Now()},
-			{ID: "7", SyncID: "obs-legacy-duplicate", SessionID: "s1", Type: "bugfix", Title: "legacy duplicate", Content: "legacy duplicate content", Project: nullableString("engram"), Scope: "project", CreatedAt: Now(), UpdatedAt: Now()},
+			{ID: "", SyncID: "", SessionID: "s1", Type: "bugfix", Title: "legacy null", Content: "legacy null content", Project: nullableString("postgram"), Scope: "project", CreatedAt: Now(), UpdatedAt: Now()},
+			{ID: "7", SyncID: "obs-legacy-fixed", SessionID: "s1", Type: "bugfix", Title: "legacy fixed", Content: "legacy fixed content", Project: nullableString("postgram"), Scope: "project", CreatedAt: Now(), UpdatedAt: Now()},
+			{ID: "7", SyncID: "obs-legacy-duplicate", SessionID: "s1", Type: "bugfix", Title: "legacy duplicate", Content: "legacy duplicate content", Project: nullableString("postgram"), Scope: "project", CreatedAt: Now(), UpdatedAt: Now()},
 		},
 	}
 
@@ -392,7 +392,7 @@ func TestImportNormalizesLegacyObservationIDs(t *testing.T) {
 		t.Fatalf("import legacy observations: %v", err)
 	}
 
-	obs, err := s.AllObservations("engram", "", 20)
+	obs, err := s.AllObservations("postgram", "", 20)
 	if err != nil {
 		t.Fatalf("all observations after import: %v", err)
 	}
@@ -414,7 +414,7 @@ func TestImportNormalizesLegacyObservationIDs(t *testing.T) {
 		seen[o.ID] = true
 	}
 
-	results, err := s.Search("legacy", SearchOptions{Project: "engram", Limit: 10})
+	results, err := s.Search("legacy", SearchOptions{Project: "postgram", Limit: 10})
 	if err != nil {
 		t.Fatalf("search after import: %v", err)
 	}
@@ -429,8 +429,8 @@ func TestImportNormalizesLegacyPromptSyncIDs(t *testing.T) {
 		Sessions: []Session{{
 			ID:              "s1",
 			ClientSessionID: "s1",
-			Project:         "engram",
-			Directory:       "/tmp/engram",
+			Project:         "postgram",
+			Directory:       "/tmp/postgram",
 			StartedAt:       Now(),
 		}},
 		Prompts: []Prompt{{
@@ -438,7 +438,7 @@ func TestImportNormalizesLegacyPromptSyncIDs(t *testing.T) {
 			SyncID:    "prompt-legacy-sync",
 			SessionID: "s1",
 			Content:   "legacy prompt",
-			Project:   "engram",
+			Project:   "postgram",
 			CreatedAt: Now(),
 		}},
 	}
@@ -486,7 +486,7 @@ func TestSuggestTopicKeyInfersFamilyFromTextWhenTypeIsGeneric(t *testing.T) {
 func TestTopicKeyUpsertIsScopedByProjectAndScope(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -495,7 +495,7 @@ func TestTopicKeyUpsertIsScopedByProjectAndScope(t *testing.T) {
 		Type:      "architecture",
 		Title:     "Auth model",
 		Content:   "Initial architecture",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 		TopicKey:  "architecture/auth-model",
 	})
@@ -508,7 +508,7 @@ func TestTopicKeyUpsertIsScopedByProjectAndScope(t *testing.T) {
 		Type:      "architecture",
 		Title:     "Auth model",
 		Content:   "Personal take",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "personal",
 		TopicKey:  "architecture/auth-model",
 	})
@@ -538,7 +538,7 @@ func TestPromptProjectNullScan(t *testing.T) {
 	s := newTestStore(t)
 	sessionID := normalizeSessionID("s1")
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -723,7 +723,7 @@ func TestExtractLearningsCleansMarkdown(t *testing.T) {
 func TestPassiveCaptureStoresLearnings(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -735,7 +735,7 @@ func TestPassiveCaptureStoresLearnings(t *testing.T) {
 	result, err := s.PassiveCapture(PassiveCaptureParams{
 		SessionID: "s1",
 		Content:   text,
-		Project:   "engram",
+		Project:   "postgram",
 		Source:    "test",
 	})
 	if err != nil {
@@ -748,7 +748,7 @@ func TestPassiveCaptureStoresLearnings(t *testing.T) {
 		t.Fatalf("expected 2 saved, got %d", result.Saved)
 	}
 
-	obs, err := s.AllObservations("engram", "", 10)
+	obs, err := s.AllObservations("postgram", "", 10)
 	if err != nil {
 		t.Fatalf("all observations: %v", err)
 	}
@@ -768,14 +768,14 @@ func TestPassiveCaptureStoresLearnings(t *testing.T) {
 func TestPassiveCaptureEmptyContent(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
 	result, err := s.PassiveCapture(PassiveCaptureParams{
 		SessionID: "s1",
 		Content:   "",
-		Project:   "engram",
+		Project:   "postgram",
 		Source:    "test",
 	})
 	if err != nil {
@@ -789,7 +789,7 @@ func TestPassiveCaptureEmptyContent(t *testing.T) {
 func TestPassiveCaptureDedupesAgainstExistingObservations(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -799,7 +799,7 @@ func TestPassiveCaptureDedupesAgainstExistingObservations(t *testing.T) {
 		Type:      "decision",
 		Title:     "bcrypt cost",
 		Content:   "bcrypt cost=12 is the right balance for our server performance",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -815,7 +815,7 @@ func TestPassiveCaptureDedupesAgainstExistingObservations(t *testing.T) {
 	result, err := s.PassiveCapture(PassiveCaptureParams{
 		SessionID: "s1",
 		Content:   text,
-		Project:   "engram",
+		Project:   "postgram",
 		Source:    "test",
 	})
 	if err != nil {
@@ -842,7 +842,7 @@ func TestPassiveCaptureReturnsErrorWhenSessionDoesNotExist(t *testing.T) {
 	_, err := s.PassiveCapture(PassiveCaptureParams{
 		SessionID: "missing-session",
 		Content:   text,
-		Project:   "engram",
+		Project:   "postgram",
 		Source:    "test",
 	})
 	if err == nil {
@@ -859,10 +859,10 @@ func TestStatsProjectsOrderedByMostRecentObservation(t *testing.T) {
 	obs1SyncID := normalizeObservationSyncID("stats-sync-1")
 	obs2SyncID := normalizeObservationSyncID("stats-sync-2")
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session s1: %v", err)
 	}
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s2", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s2", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session s2: %v", err)
 	}
 
@@ -901,8 +901,8 @@ func TestSessionsOrderedByMostRecentActivity(t *testing.T) {
 		`INSERT INTO sessions (id, project, directory, started_at) VALUES
 		 (?, ?, ?, ?),
 		 (?, ?, ?, ?)`,
-		olderID, "engram", "/tmp/engram", "2026-02-01 09:00:00",
-		newerID, "engram", "/tmp/engram", "2026-02-02 09:00:00",
+		olderID, "postgram", "/tmp/postgram", "2026-02-01 09:00:00",
+		newerID, "postgram", "/tmp/postgram", "2026-02-02 09:00:00",
 	)
 	if err != nil {
 		t.Fatalf("insert sessions: %v", err)
@@ -911,7 +911,7 @@ func TestSessionsOrderedByMostRecentActivity(t *testing.T) {
 	_, err = s.execHook(s.db,
 		`INSERT INTO observations (id, sync_id, session_id, type, title, content, project, scope, normalized_hash, revision_count, duplicate_count, created_at, updated_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)`,
-		latestObsID, latestObsSyncID, olderID, "note", "latest", "session old got new activity", "engram", "project", hashNormalized("session old got new activity"), "2026-02-03 09:00:00", "2026-02-03 09:00:00",
+		latestObsID, latestObsSyncID, olderID, "note", "latest", "session old got new activity", "postgram", "project", hashNormalized("session old got new activity"), "2026-02-03 09:00:00", "2026-02-03 09:00:00",
 	)
 	if err != nil {
 		t.Fatalf("insert latest observation: %v", err)
@@ -943,7 +943,7 @@ func TestSessionsOrderedByMostRecentActivity(t *testing.T) {
 func TestSessionObservationsAddPromptAndImport(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s1", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -952,7 +952,7 @@ func TestSessionObservationsAddPromptAndImport(t *testing.T) {
 		Type:      "decision",
 		Title:     "Auth",
 		Content:   "Use middleware chain",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -960,7 +960,7 @@ func TestSessionObservationsAddPromptAndImport(t *testing.T) {
 	}
 
 	longPrompt := strings.Repeat("x", s.cfg.MaxObservationLength+25)
-	promptID, err := s.AddPrompt(AddPromptParams{SessionID: "s1", Content: longPrompt, Project: "engram"})
+	promptID, err := s.AddPrompt(AddPromptParams{SessionID: "s1", Content: longPrompt, Project: "postgram"})
 	if err != nil {
 		t.Fatalf("add prompt: %v", err)
 	}
@@ -1039,7 +1039,7 @@ func TestUtilityHelpersCoverage(t *testing.T) {
 
 func TestEndSessionAndTimelineDefaults(t *testing.T) {
 	s := newTestStore(t)
-	params := CreateSessionParams{ClientSessionID: "s-end", Project: "engram", Directory: "/tmp/engram"}
+	params := CreateSessionParams{ClientSessionID: "s-end", Project: "postgram", Directory: "/tmp/postgram"}
 
 	if err := s.CreateSession(params); err != nil {
 		t.Fatalf("create session: %v", err)
@@ -1050,7 +1050,7 @@ func TestEndSessionAndTimelineDefaults(t *testing.T) {
 		Type:      "note",
 		Title:     "first",
 		Content:   "first note",
-		Project:   "engram",
+		Project:   "postgram",
 	})
 	if err != nil {
 		t.Fatalf("add first observation: %v", err)
@@ -1060,7 +1060,7 @@ func TestEndSessionAndTimelineDefaults(t *testing.T) {
 		Type:      "note",
 		Title:     "second",
 		Content:   "second note",
-		Project:   "engram",
+		Project:   "postgram",
 	})
 	if err != nil {
 		t.Fatalf("add second observation: %v", err)
@@ -1132,7 +1132,7 @@ func TestInferTopicFamilyCoverage(t *testing.T) {
 
 func TestStoreAdditionalQueryAndMutationBranches(t *testing.T) {
 	s := newTestStore(t)
-	params := CreateSessionParams{ClientSessionID: "s-q", Project: "engram", Directory: "/tmp/engram"}
+	params := CreateSessionParams{ClientSessionID: "s-q", Project: "postgram", Directory: "/tmp/postgram"}
 
 	if err := s.CreateSession(params); err != nil {
 		t.Fatalf("create session: %v", err)
@@ -1144,7 +1144,7 @@ func TestStoreAdditionalQueryAndMutationBranches(t *testing.T) {
 		Type:      "note",
 		Title:     "Private <private>secret</private> title",
 		Content:   longContent + " <private>token</private>",
-		Project:   "engram",
+		Project:   "postgram",
 		Scope:     "project",
 	})
 	if err != nil {
@@ -1247,7 +1247,7 @@ func TestStoreErrorBranchesWithClosedDatabase(t *testing.T) {
 func TestEndSessionEdgeCases(t *testing.T) {
 	s := newTestStore(t)
 
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-edge", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-edge", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
@@ -1273,10 +1273,10 @@ func TestEndSessionEdgeCases(t *testing.T) {
 
 func TestTimelineHandlesMissingSessionRecord(t *testing.T) {
 	s := newTestStore(t)
-	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "manual-save", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "manual-save", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 		t.Fatalf("create session: %v", err)
 	}
-	obsID, err := s.AddObservation(AddObservationParams{SessionID: "manual-save", Type: "manual", Title: "orphan", Content: "orphan content", Project: "engram", Scope: "project"})
+	obsID, err := s.AddObservation(AddObservationParams{SessionID: "manual-save", Type: "manual", Title: "orphan", Content: "orphan content", Project: "postgram", Scope: "project"})
 	if err != nil {
 		t.Fatalf("add observation: %v", err)
 	}
@@ -1423,7 +1423,7 @@ func TestExportImportEdgeBranches(t *testing.T) {
 				ID:        "promptrow-missing",
 				SessionID: "missing-session",
 				Content:   "prompt",
-				Project:   "engram",
+				Project:   "postgram",
 				CreatedAt: Now(),
 			}},
 		})
@@ -1439,7 +1439,7 @@ func TestNewErrorBranches(t *testing.T) {
 		cfg.DatabaseURL = ""
 
 		_, err := New(cfg)
-		if err == nil || !strings.Contains(err.Error(), "ENGRAM_DATABASE_URL is required") {
+		if err == nil || !strings.Contains(err.Error(), "POSTGRAM_DATABASE_URL is required") {
 			t.Fatalf("expected missing database url error, got %v", err)
 		}
 	})
@@ -1747,20 +1747,20 @@ func TestHookFallbacksAndAdditionalBranches(t *testing.T) {
 
 	t.Run("timeline includes before and after in chronological order", func(t *testing.T) {
 		s := newTestStore(t)
-		params := CreateSessionParams{ClientSessionID: "s-tl", Project: "engram", Directory: "/tmp/engram"}
+		params := CreateSessionParams{ClientSessionID: "s-tl", Project: "postgram", Directory: "/tmp/postgram"}
 		if err := s.CreateSession(params); err != nil {
 			t.Fatalf("create session: %v", err)
 		}
 
-		firstID, err := s.AddObservation(AddObservationParams{SessionID: params.EffectiveID(), Type: "note", Title: "1", Content: "one", Project: "engram"})
+		firstID, err := s.AddObservation(AddObservationParams{SessionID: params.EffectiveID(), Type: "note", Title: "1", Content: "one", Project: "postgram"})
 		if err != nil {
 			t.Fatalf("add first observation: %v", err)
 		}
-		middleID, err := s.AddObservation(AddObservationParams{SessionID: params.EffectiveID(), Type: "note", Title: "2", Content: "two", Project: "engram"})
+		middleID, err := s.AddObservation(AddObservationParams{SessionID: params.EffectiveID(), Type: "note", Title: "2", Content: "two", Project: "postgram"})
 		if err != nil {
 			t.Fatalf("add middle observation: %v", err)
 		}
-		lastID, err := s.AddObservation(AddObservationParams{SessionID: params.EffectiveID(), Type: "note", Title: "3", Content: "three", Project: "engram"})
+		lastID, err := s.AddObservation(AddObservationParams{SessionID: params.EffectiveID(), Type: "note", Title: "3", Content: "three", Project: "postgram"})
 		if err != nil {
 			t.Fatalf("add last observation: %v", err)
 		}
@@ -1795,7 +1795,7 @@ func TestHookFallbacksAndAdditionalBranches(t *testing.T) {
 
 		t.Run("recent observations error", func(t *testing.T) {
 			s := newTestStore(t)
-			if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-ctx", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+			if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-ctx", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 				t.Fatalf("create session: %v", err)
 			}
 			if _, err := s.db.Exec("DROP TABLE observations"); err != nil {
@@ -1808,7 +1808,7 @@ func TestHookFallbacksAndAdditionalBranches(t *testing.T) {
 
 		t.Run("recent prompts error", func(t *testing.T) {
 			s := newTestStore(t)
-			if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-ctx2", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+			if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-ctx2", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 				t.Fatalf("create session: %v", err)
 			}
 			if _, err := s.db.Exec("DROP TABLE user_prompts"); err != nil {
@@ -1887,11 +1887,11 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 
 	t.Run("add observation, prompt, update forced errors", func(t *testing.T) {
 		s := newTestStore(t)
-		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-e", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-e", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 			t.Fatalf("create session: %v", err)
 		}
 
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "top", Content: "x", Project: "engram", TopicKey: "x"}); err != nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "top", Content: "x", Project: "postgram", TopicKey: "x"}); err != nil {
 			t.Fatalf("seed topic observation: %v", err)
 		}
 		origExec := s.hooks.exec
@@ -1901,12 +1901,12 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 			}
 			return origExec(db, query, args...)
 		}
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "top", Content: "x", Project: "engram", TopicKey: "x"}); err == nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "top", Content: "x", Project: "postgram", TopicKey: "x"}); err == nil {
 			t.Fatalf("expected topic upsert exec error")
 		}
 
 		s.hooks = defaultStoreHooks()
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "dup", Content: "dup content", Project: "engram"}); err != nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "dup", Content: "dup content", Project: "postgram"}); err != nil {
 			t.Fatalf("seed dedupe observation: %v", err)
 		}
 		origExec = s.hooks.exec
@@ -1916,17 +1916,17 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 			}
 			return origExec(db, query, args...)
 		}
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "dup", Content: "dup content", Project: "engram"}); err == nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "dup", Content: "dup content", Project: "postgram"}); err == nil {
 			t.Fatalf("expected dedupe exec error")
 		}
 
 		if err := s.Close(); err != nil {
 			t.Fatalf("close store: %v", err)
 		}
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "x", Content: "y", Project: "engram", TopicKey: "t"}); err == nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "x", Content: "y", Project: "postgram", TopicKey: "t"}); err == nil {
 			t.Fatalf("expected topic query error on closed db")
 		}
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "x", Content: "y", Project: "engram"}); err == nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-e", Type: "note", Title: "x", Content: "y", Project: "postgram"}); err == nil {
 			t.Fatalf("expected dedupe query error on closed db")
 		}
 		if _, err := s.AddPrompt(AddPromptParams{SessionID: "s-e", Content: "x"}); err == nil {
@@ -1936,10 +1936,10 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 
 	t.Run("update observation remaining branches", func(t *testing.T) {
 		s := newTestStore(t)
-		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-u", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-u", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 			t.Fatalf("create session: %v", err)
 		}
-		id, err := s.AddObservation(AddObservationParams{SessionID: "s-u", Type: "old", Title: "t", Content: "c", Project: "engram", TopicKey: "topic/key"})
+		id, err := s.AddObservation(AddObservationParams{SessionID: "s-u", Type: "old", Title: "t", Content: "c", Project: "postgram", TopicKey: "topic/key"})
 		if err != nil {
 			t.Fatalf("seed observation: %v", err)
 		}
@@ -1988,13 +1988,13 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 			}
 		}
 
-		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-iter", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-iter", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 			t.Fatalf("create session: %v", err)
 		}
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-iter", Type: "note", Title: "one", Content: "one", Project: "engram"}); err != nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-iter", Type: "note", Title: "one", Content: "one", Project: "postgram"}); err != nil {
 			t.Fatalf("add observation: %v", err)
 		}
-		if _, err := s.AddPrompt(AddPromptParams{SessionID: "s-iter", Content: "prompt", Project: "engram"}); err != nil {
+		if _, err := s.AddPrompt(AddPromptParams{SessionID: "s-iter", Content: "prompt", Project: "postgram"}); err != nil {
 			t.Fatalf("add prompt: %v", err)
 		}
 
@@ -2078,15 +2078,15 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 
 	t.Run("timeline and search type filter branches", func(t *testing.T) {
 		s := newTestStore(t)
-		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-t2", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-t2", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 			t.Fatalf("create session: %v", err)
 		}
-		first, _ := s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "a", Content: "a", Project: "engram"})
-		_, _ = s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "aa", Content: "aa", Project: "engram"})
-		focus, _ := s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "b", Content: "b", Project: "engram"})
-		_, _ = s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "c", Content: "c", Project: "engram"})
+		first, _ := s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "a", Content: "a", Project: "postgram"})
+		_, _ = s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "aa", Content: "aa", Project: "postgram"})
+		focus, _ := s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "b", Content: "b", Project: "postgram"})
+		_, _ = s.AddObservation(AddObservationParams{SessionID: "s-t2", Type: "decision", Title: "c", Content: "c", Project: "postgram"})
 
-		if _, err := s.Search("b", SearchOptions{Type: "decision", Project: "engram", Scope: "project", Limit: 5}); err != nil {
+		if _, err := s.Search("b", SearchOptions{Type: "decision", Project: "postgram", Scope: "project", Limit: 5}); err != nil {
 			t.Fatalf("search with type filter: %v", err)
 		}
 
@@ -2163,10 +2163,10 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 
 	t.Run("format context and stats remaining branches", func(t *testing.T) {
 		s := newTestStore(t)
-		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-c", Project: "engram", Directory: "/tmp/engram"}); err != nil {
+		if err := s.CreateSession(CreateSessionParams{ClientSessionID: "s-c", Project: "postgram", Directory: "/tmp/postgram"}); err != nil {
 			t.Fatalf("create session: %v", err)
 		}
-		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-c", Type: "note", Title: "n", Content: "n", Project: "engram"}); err != nil {
+		if _, err := s.AddObservation(AddObservationParams{SessionID: "s-c", Type: "note", Title: "n", Content: "n", Project: "postgram"}); err != nil {
 			t.Fatalf("add obs: %v", err)
 		}
 
@@ -2177,7 +2177,7 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 			}
 			return origQueryIt(db, query, args...)
 		}
-		if _, err := s.FormatContext("engram", "project"); err == nil {
+		if _, err := s.FormatContext("postgram", "project"); err == nil {
 			t.Fatalf("expected format context observations error")
 		}
 
@@ -2195,7 +2195,7 @@ func TestStoreUncoveredBranchesPushToHundred(t *testing.T) {
 			t.Fatalf("end session: %v", err)
 		}
 		s.hooks.queryIt = origQueryIt
-		ctx, err := s.FormatContext("engram", "project")
+		ctx, err := s.FormatContext("postgram", "project")
 		if err != nil {
 			t.Fatalf("format context with summary: %v", err)
 		}

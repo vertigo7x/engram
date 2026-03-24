@@ -18,7 +18,7 @@ import (
 
 type contextKey string
 
-const ClaimsContextKey contextKey = "engram-auth-claims"
+const ClaimsContextKey contextKey = "postgram-auth-claims"
 
 var ErrInsufficientScope = errors.New("insufficient scope")
 

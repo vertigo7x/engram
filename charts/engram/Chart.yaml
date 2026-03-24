@@ -1,6 +1,0 @@
-apiVersion: v2
-name: engram
-description: Shared memory service for AI development teams
-type: application
-version: 0.1.0
-appVersion: "0.1.0"

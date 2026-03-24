@@ -17,18 +17,19 @@
 
 ---
 
-> **engram** `/ˈen.ɡræm/` — *neuroscience*: the physical trace of a memory in the brain.
+> **postgram** is a remote memory service for AI coding agents. It provides a persistent, shared memory store backed by PostgreSQL, accessible over HTTP using the Memory Context Protocol (MCP). With Postgram, your agents can save decisions, bugfixes, and summaries across sessions, enabling long-term context and learning.
 
-Your AI coding agent forgets everything when the session ends. Engram gives it a brain.
 
-Engram is a **remote MCP memory service** for coding agents. Run one Go binary, connect it to PostgreSQL, expose `/mcp`, and point your agents at it.
+Your AI coding agent forgets everything when the session ends. Postgram gives it a brain.
+
+Postgram is a **remote MCP memory service** for coding agents. Run one Go binary, connect it to PostgreSQL, expose `/mcp`, and point your agents at it.
 
 ```
 Agent (Claude Code / OpenCode / Gemini CLI / Codex / VS Code / ...)
     ↓ MCP over HTTP
-Engram (`engram serve`)
+Postgram (`postgram serve`)
     ↓
-PostgreSQL (`ENGRAM_DATABASE_URL`)
+PostgreSQL (`POSTGRAM_DATABASE_URL`)
 ```
 
 ## Quick Start
@@ -38,41 +39,41 @@ PostgreSQL (`ENGRAM_DATABASE_URL`)
 From the repository:
 
 ```bash
-git clone https://github.com/Gentleman-Programming/engram.git
-cd engram
-go build -o engram ./cmd/engram
+git clone https://github.com/vertigo7x/postgram.git
+cd postgram
+go build -o postgram ./cmd/postgram
 ```
 
 Or use the published Docker image from Docker Hub:
 
 ```bash
-docker pull vertigo7x/engram:latest
+docker pull vertigo7x/postgram:latest
 ```
 
 Current install/runtime paths → build from this repository or run the Docker image.
 
-### 2. Start Engram
+### 2. Start Postgram
 
 Binary:
 
 ```bash
-export ENGRAM_DATABASE_URL='postgres://user:pass@host:5432/engram?sslmode=disable'
-engram serve
+export POSTGRAM_DATABASE_URL='postgres://user:pass@host:5432/postgram?sslmode=disable'
+postgram serve
 ```
 
 Docker:
 
 ```bash
 docker run --rm -p 7437:7437 \
-  -e ENGRAM_DATABASE_URL='postgres://user:pass@host:5432/engram?sslmode=disable' \
-  engramai/engram:latest serve
+  -e POSTGRAM_DATABASE_URL='postgres://user:pass@host:5432/postgram?sslmode=disable' \
+  postgramai/postgram:latest serve
 ```
 
 Default endpoints:
 - Health: `http://127.0.0.1:7437/health`
 - MCP: `http://127.0.0.1:7437/mcp`
 
-For team/shared setups, put Engram behind your normal ingress or reverse proxy and publish a stable URL such as `https://engram.example.com/mcp`.
+For team/shared setups, put Postgram behind your normal ingress or reverse proxy and publish a stable URL such as `https://postgram.example.com/mcp`.
 
 ### 3. Connect Your Agent
 
@@ -82,7 +83,7 @@ For team/shared setups, put Engram behind your normal ingress or reverse proxy a
 | OpenCode | Add remote MCP config from `docs/AGENT-SETUP.md` |
 | Gemini CLI | Add remote MCP config from `docs/AGENT-SETUP.md` |
 | Codex | Add remote MCP config from `docs/AGENT-SETUP.md` |
-| VS Code | `code --add-mcp '{"name":"engram","url":"https://your-engram-host/mcp"}'` |
+| VS Code | `code --add-mcp '{"name":"postgram","url":"https://your-postgram-host/mcp"}'` |
 | Cursor / Windsurf / Any MCP | See [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md) |
 
 Full per-agent config, Memory Protocol, and compaction survival → [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)
@@ -92,15 +93,15 @@ That's it. No Node.js, no Python, no sidecar services. **One binary, one Postgre
 ## The Main Flow
 
 ```
-1. Agent connects to Engram over MCP HTTP
+1. Agent connects to Postgram over MCP HTTP
 2. Agent saves decisions, bugfixes, and summaries with `mem_save` / `mem_session_summary`
-3. Engram stores them in PostgreSQL
+3. Postgram stores them in PostgreSQL
 4. Future sessions recover context with `mem_context`, `mem_search`, and `mem_timeline`
 ```
 
 Full details on session lifecycle, topic keys, and memory hygiene → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-## Why Engram
+## Why Postgram
 
 - Shared memory for local agents, cloud agents, and team deployments
 - Postgres-backed storage instead of per-machine local files
@@ -128,22 +129,22 @@ Full details on session lifecycle, topic keys, and memory hygiene → [docs/ARCH
 
 Full tool reference → [docs/ARCHITECTURE.md#mcp-tools](docs/ARCHITECTURE.md#mcp-tools)
 
-## Operating Engram
+## Operating Postgram
 
 ```bash
-engram serve              # Start HTTP API + MCP over HTTP
-engram stats              # Inspect memory totals
-engram tui                # Browse memory manually
-engram export backup.json # Export all data
-engram import backup.json # Import a backup
+postgram serve              # Start HTTP API + MCP over HTTP
+postgram stats              # Inspect memory totals
+postgram tui                # Browse memory manually
+postgram export backup.json # Export all data
+postgram import backup.json # Import a backup
 ```
 
-The CLI is mainly for operators, debugging, migration, and manual inspection. Agents should usually talk to Engram through MCP over HTTP.
+The CLI is mainly for operators, debugging, migration, and manual inspection. Agents should usually talk to Postgram through MCP over HTTP.
 
 ## Terminal UI
 
 ```bash
-engram tui
+postgram tui
 ```
 
 <p align="center">
@@ -159,18 +160,18 @@ engram tui
 
 | Command | Description |
 |---------|-------------|
-| `engram serve [port]` | Start HTTP API + MCP over HTTP |
-| `engram tui` | Launch terminal UI |
-| `engram search <query>` | Search memories |
-| `engram save <title> <msg>` | Save a memory |
-| `engram timeline <obs_id>` | Chronological context |
-| `engram context [project]` | Recent session context |
-| `engram stats` | Memory statistics |
-| `engram export [file]` | Export to JSON |
-| `engram import <file>` | Import from JSON |
-| `engram version` | Show version |
+| `postgram serve [port]` | Start HTTP API + MCP over HTTP |
+| `postgram tui` | Launch terminal UI |
+| `postgram search <query>` | Search memories |
+| `postgram save <title> <msg>` | Save a memory |
+| `postgram timeline <obs_id>` | Chronological context |
+| `postgram context [project]` | Recent session context |
+| `postgram stats` | Memory statistics |
+| `postgram export [file]` | Export to JSON |
+| `postgram import <file>` | Import from JSON |
+| `postgram version` | Show version |
 
-Most users only need `engram serve` plus the agent config from `docs/AGENT-SETUP.md`.
+Most users only need `postgram serve` plus the agent config from `docs/AGENT-SETUP.md`.
 
 ## Documentation
 
@@ -179,7 +180,7 @@ Most users only need `engram serve` plus the agent config from `docs/AGENT-SETUP
 | [Installation](docs/INSTALLATION.md) | All install methods + platform support |
 | [Agent Setup](docs/AGENT-SETUP.md) | Per-agent configuration + Memory Protocol |
 | [Architecture](docs/ARCHITECTURE.md) | How it works + MCP tools + project structure |
-| [Comparison](docs/COMPARISON.md) | Why Engram vs claude-mem |
+| [Comparison](docs/COMPARISON.md) | Why Postgram vs claude-mem |
 | [Contributing](CONTRIBUTING.md) | Contribution workflow + standards |
 | [Full Docs](DOCS.md) | Complete technical reference |
 

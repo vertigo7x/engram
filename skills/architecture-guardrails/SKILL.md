@@ -1,7 +1,7 @@
 ---
-name: engram-architecture-guardrails
+name: postgram-architecture-guardrails
 description: >
-  Architecture guardrails for Engram across store, server, MCP, TUI, and remote
+  Architecture guardrails for Postgram across store, server, MCP, TUI, and remote
   integrations. Trigger: Any change that affects system boundaries, ownership,
   state flow, or cross-package responsibilities.
 license: Apache-2.0

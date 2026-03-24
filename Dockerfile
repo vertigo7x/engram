@@ -6,19 +6,19 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/engram ./cmd/engram
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/postgram ./cmd/postgram
 
 FROM gcr.io/distroless/static-debian12
 
-ENV ENGRAM_DATA_DIR=/data
-ENV ENGRAM_HOST=0.0.0.0
-ENV ENGRAM_PORT=7437
+ENV POSTGRAM_DATA_DIR=/data
+ENV POSTGRAM_HOST=0.0.0.0
+ENV POSTGRAM_PORT=7437
 
 WORKDIR /
-COPY --from=builder /out/engram /engram
+COPY --from=builder /out/postgram /postgram
 
 EXPOSE 7437
 VOLUME ["/data"]
 
-ENTRYPOINT ["/engram"]
+ENTRYPOINT ["/postgram"]
 CMD ["serve"]
