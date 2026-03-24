@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -61,6 +60,15 @@ func decodeJSON[T any](t *testing.T, resp *http.Response) T {
 	return out
 }
 
+func requireStringField(t *testing.T, body map[string]any, key string) string {
+	t.Helper()
+	v, ok := body[key].(string)
+	if !ok || strings.TrimSpace(v) == "" {
+		t.Fatalf("expected string field %q, got %T (%v)", key, body[key], body[key])
+	}
+	return v
+}
+
 func TestObservationsTopicUpsertAndDeleteE2E(t *testing.T) {
 	_, ts := newE2EServer(t)
 	client := ts.Client()
@@ -88,7 +96,7 @@ func TestObservationsTopicUpsertAndDeleteE2E(t *testing.T) {
 		t.Fatalf("expected 201 creating first observation, got %d", firstResp.StatusCode)
 	}
 	firstBody := decodeJSON[map[string]any](t, firstResp)
-	firstID := int64(firstBody["id"].(float64))
+	firstID := requireStringField(t, firstBody, "id")
 
 	secondResp := postJSON(t, client, ts.URL+"/observations", map[string]any{
 		"session_id": "s-e2e",
@@ -103,12 +111,12 @@ func TestObservationsTopicUpsertAndDeleteE2E(t *testing.T) {
 		t.Fatalf("expected 201 upserting observation, got %d", secondResp.StatusCode)
 	}
 	secondBody := decodeJSON[map[string]any](t, secondResp)
-	secondID := int64(secondBody["id"].(float64))
+	secondID := requireStringField(t, secondBody, "id")
 	if firstID != secondID {
-		t.Fatalf("expected topic upsert to return same id, got %d and %d", firstID, secondID)
+		t.Fatalf("expected topic upsert to return same id, got %s and %s", firstID, secondID)
 	}
 
-	getResp, err := client.Get(ts.URL + "/observations/" + strconv.FormatInt(firstID, 10))
+	getResp, err := client.Get(ts.URL + "/observations/" + firstID)
 	if err != nil {
 		t.Fatalf("get observation: %v", err)
 	}
@@ -136,12 +144,12 @@ func TestObservationsTopicUpsertAndDeleteE2E(t *testing.T) {
 		t.Fatalf("expected 201 creating bug observation, got %d", bugResp.StatusCode)
 	}
 	bugBody := decodeJSON[map[string]any](t, bugResp)
-	bugID := int64(bugBody["id"].(float64))
+	bugID := requireStringField(t, bugBody, "id")
 	if bugID == firstID {
 		t.Fatalf("expected different topic to create new observation")
 	}
 
-	deleteReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+strconv.FormatInt(firstID, 10), nil)
+	deleteReq, err := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+firstID, nil)
 	if err != nil {
 		t.Fatalf("new delete request: %v", err)
 	}
@@ -154,7 +162,7 @@ func TestObservationsTopicUpsertAndDeleteE2E(t *testing.T) {
 	}
 	deleteResp.Body.Close()
 
-	deletedGetResp, err := client.Get(ts.URL + "/observations/" + strconv.FormatInt(firstID, 10))
+	deletedGetResp, err := client.Get(ts.URL + "/observations/" + firstID)
 	if err != nil {
 		t.Fatalf("get deleted observation: %v", err)
 	}
@@ -174,7 +182,7 @@ func TestObservationsTopicUpsertAndDeleteE2E(t *testing.T) {
 	if len(searchResults) != 1 {
 		t.Fatalf("expected one search result after soft-delete, got %d", len(searchResults))
 	}
-	if int64(searchResults[0]["id"].(float64)) != bugID {
+	if requireStringField(t, searchResults[0], "id") != bugID {
 		t.Fatalf("expected bug observation in search results")
 	}
 }
@@ -336,7 +344,7 @@ func TestCoreReadHandlersAndHelpersE2E(t *testing.T) {
 		t.Fatalf("expected 201 creating observation, got %d", obs.StatusCode)
 	}
 	obsData := decodeJSON[map[string]any](t, obs)
-	obsID := int64(obsData["id"].(float64))
+	obsID := requireStringField(t, obsData, "id")
 
 	recentSessionsResp, err := client.Get(ts.URL + "/sessions/recent?project=engram&limit=oops")
 	if err != nil {
@@ -362,7 +370,7 @@ func TestCoreReadHandlersAndHelpersE2E(t *testing.T) {
 		t.Fatalf("expected recent observations")
 	}
 
-	timelineResp, err := client.Get(ts.URL + "/timeline?observation_id=" + strconv.FormatInt(obsID, 10) + "&before=bad&after=bad")
+	timelineResp, err := client.Get(ts.URL + "/timeline?observation_id=" + obsID + "&before=bad&after=bad")
 	if err != nil {
 		t.Fatalf("timeline: %v", err)
 	}
@@ -557,9 +565,9 @@ func TestPromptAndObservationMutationHandlersE2E(t *testing.T) {
 		t.Fatalf("expected 201 adding observation, got %d", obs.StatusCode)
 	}
 	obsBody := decodeJSON[map[string]any](t, obs)
-	obsID := int64(obsBody["id"].(float64))
+	obsID := requireStringField(t, obsBody, "id")
 
-	updateReq, err := http.NewRequest(http.MethodPatch, ts.URL+"/observations/"+strconv.FormatInt(obsID, 10), strings.NewReader(`{"title":"Auth handling updated","topic_key":"architecture/auth"}`))
+	updateReq, err := http.NewRequest(http.MethodPatch, ts.URL+"/observations/"+obsID, strings.NewReader(`{"title":"Auth handling updated","topic_key":"architecture/auth"}`))
 	if err != nil {
 		t.Fatalf("new patch request: %v", err)
 	}
@@ -576,7 +584,7 @@ func TestPromptAndObservationMutationHandlersE2E(t *testing.T) {
 		t.Fatalf("expected updated title, got %v", updated["title"])
 	}
 
-	emptyUpdateReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/observations/"+strconv.FormatInt(obsID, 10), strings.NewReader(`{}`))
+	emptyUpdateReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/observations/"+obsID, strings.NewReader(`{}`))
 	emptyUpdateReq.Header.Set("Content-Type", "application/json")
 	emptyUpdateResp, err := client.Do(emptyUpdateReq)
 	if err != nil {
@@ -587,7 +595,7 @@ func TestPromptAndObservationMutationHandlersE2E(t *testing.T) {
 	}
 	emptyUpdateResp.Body.Close()
 
-	badUpdateReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/observations/"+strconv.FormatInt(obsID, 10), strings.NewReader("{"))
+	badUpdateReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/observations/"+obsID, strings.NewReader("{"))
 	badUpdateReq.Header.Set("Content-Type", "application/json")
 	badUpdateResp, err := client.Do(badUpdateReq)
 	if err != nil {
@@ -598,7 +606,7 @@ func TestPromptAndObservationMutationHandlersE2E(t *testing.T) {
 	}
 	badUpdateResp.Body.Close()
 
-	deleteHardReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+strconv.FormatInt(obsID, 10)+"?hard=true", nil)
+	deleteHardReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+obsID+"?hard=true", nil)
 	deleteHardResp, err := client.Do(deleteHardReq)
 	if err != nil {
 		t.Fatalf("delete hard observation: %v", err)
@@ -608,7 +616,7 @@ func TestPromptAndObservationMutationHandlersE2E(t *testing.T) {
 	}
 	deleteHardResp.Body.Close()
 
-	deleteInvalidBoolReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+strconv.FormatInt(obsID, 10)+"?hard=not-bool", nil)
+	deleteInvalidBoolReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+obsID+"?hard=not-bool", nil)
 	deleteInvalidBoolResp, err := client.Do(deleteInvalidBoolReq)
 	if err != nil {
 		t.Fatalf("delete with invalid bool: %v", err)
@@ -740,7 +748,7 @@ func TestObservationAndSessionErrorBranchesE2E(t *testing.T) {
 		t.Fatalf("expected 201 adding observation, got %d", obs.StatusCode)
 	}
 	obsData := decodeJSON[map[string]any](t, obs)
-	obsID := int64(obsData["id"].(float64))
+	obsID := requireStringField(t, obsData, "id")
 
 	deleteBadIDReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/not-number", nil)
 	deleteBadIDResp, err := client.Do(deleteBadIDReq)
@@ -752,7 +760,7 @@ func TestObservationAndSessionErrorBranchesE2E(t *testing.T) {
 	}
 	deleteBadIDResp.Body.Close()
 
-	deleteReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+strconv.FormatInt(obsID, 10), nil)
+	deleteReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+obsID, nil)
 	deleteResp, err := client.Do(deleteReq)
 	if err != nil {
 		t.Fatalf("delete observation: %v", err)
@@ -762,7 +770,7 @@ func TestObservationAndSessionErrorBranchesE2E(t *testing.T) {
 	}
 	deleteResp.Body.Close()
 
-	timelineNotFoundResp, err := client.Get(ts.URL + "/timeline?observation_id=" + strconv.FormatInt(obsID, 10))
+	timelineNotFoundResp, err := client.Get(ts.URL + "/timeline?observation_id=" + obsID)
 	if err != nil {
 		t.Fatalf("timeline for deleted obs: %v", err)
 	}
@@ -848,7 +856,8 @@ func TestStoreClosedExtraServerBranchesE2E(t *testing.T) {
 	}
 	searchResp.Body.Close()
 
-	getResp, err := client.Get(ts.URL + "/observations/1")
+	missingID := "11111111-1111-1111-1111-111111111111"
+	getResp, err := client.Get(ts.URL + "/observations/" + missingID)
 	if err != nil {
 		t.Fatalf("get observation closed store: %v", err)
 	}
@@ -857,7 +866,7 @@ func TestStoreClosedExtraServerBranchesE2E(t *testing.T) {
 	}
 	getResp.Body.Close()
 
-	deleteReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/1", nil)
+	deleteReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/observations/"+missingID, nil)
 	deleteResp, err := client.Do(deleteReq)
 	if err != nil {
 		t.Fatalf("delete observation closed store: %v", err)
