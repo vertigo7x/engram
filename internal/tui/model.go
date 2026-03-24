@@ -10,8 +10,8 @@
 package tui
 
 import (
-	"github.com/Gentleman-Programming/postgram/internal/store"
-	"github.com/Gentleman-Programming/postgram/internal/version"
+	"github.com/vertigo7x/postgram/internal/store"
+	"github.com/vertigo7x/postgram/internal/version"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

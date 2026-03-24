@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Gentleman-Programming/postgram/internal/testutil"
+	"github.com/vertigo7x/postgram/internal/testutil"
 	"github.com/google/uuid"
 )
 

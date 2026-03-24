@@ -10,7 +10,7 @@ An agent-agnostic persistent memory system. A Go binary backed by PostgreSQL, ex
 
 **Why Go?** Single binary, cross-platform, no runtime dependencies. Uses PostgreSQL via `github.com/lib/pq` and serves CLI, HTTP, MCP, and TUI flows from one binary.
 
-- **Module**: `github.com/Gentleman-Programming/postgram`
+- **Module**: `github.com/vertigo7x/postgram`
 - **Version**: 0.1.0
 
 ---

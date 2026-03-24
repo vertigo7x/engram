@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Gentleman-Programming/postgram/internal/store"
-	"github.com/Gentleman-Programming/postgram/internal/testutil"
+	"github.com/vertigo7x/postgram/internal/store"
+	"github.com/vertigo7x/postgram/internal/testutil"
 )
 
 func testConfig(t *testing.T) store.Config {

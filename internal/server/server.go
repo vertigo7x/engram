@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Gentleman-Programming/postgram/internal/auth"
-	"github.com/Gentleman-Programming/postgram/internal/store"
+	"github.com/vertigo7x/postgram/internal/auth"
+	"github.com/vertigo7x/postgram/internal/store"
 	"github.com/google/uuid"
 )
 

@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Gentleman-Programming/postgram/internal/auth"
-	"github.com/Gentleman-Programming/postgram/internal/store"
+	"github.com/vertigo7x/postgram/internal/auth"
+	"github.com/vertigo7x/postgram/internal/store"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )

@@ -22,12 +22,12 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Gentleman-Programming/postgram/internal/auth"
-	"github.com/Gentleman-Programming/postgram/internal/mcp"
-	"github.com/Gentleman-Programming/postgram/internal/server"
-	"github.com/Gentleman-Programming/postgram/internal/store"
-	"github.com/Gentleman-Programming/postgram/internal/tui"
-	versioncheck "github.com/Gentleman-Programming/postgram/internal/version"
+	"github.com/vertigo7x/postgram/internal/auth"
+	"github.com/vertigo7x/postgram/internal/mcp"
+	"github.com/vertigo7x/postgram/internal/server"
+	"github.com/vertigo7x/postgram/internal/store"
+	"github.com/vertigo7x/postgram/internal/tui"
+	versioncheck "github.com/vertigo7x/postgram/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"

@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	postgramsrv "github.com/Gentleman-Programming/postgram/internal/server"
-	"github.com/Gentleman-Programming/postgram/internal/store"
-	"github.com/Gentleman-Programming/postgram/internal/testutil"
-	"github.com/Gentleman-Programming/postgram/internal/tui"
+	postgramsrv "github.com/vertigo7x/postgram/internal/server"
+	"github.com/vertigo7x/postgram/internal/store"
+	"github.com/vertigo7x/postgram/internal/testutil"
+	"github.com/vertigo7x/postgram/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/golang-jwt/jwt/v5"

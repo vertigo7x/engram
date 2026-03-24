@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/Gentleman-Programming/postgram/internal/store"
-	"github.com/Gentleman-Programming/postgram/internal/testutil"
+	"github.com/vertigo7x/postgram/internal/store"
+	"github.com/vertigo7x/postgram/internal/testutil"
 )
 
 type stubListener struct{}

@@ -15,7 +15,7 @@
 Build from source:
 
 ```powershell
-git clone https://github.com/Gentleman-Programming/postgram.git
+git clone https://github.com/vertigo7x/postgram.git
 cd postgram
 go install ./cmd/postgram
 # Binary goes to %GOPATH%\bin\postgram.exe (typically %USERPROFILE%\go\bin\)
@@ -36,7 +36,7 @@ go build -ldflags="-X main.version=local-$v" -o postgram.exe ./cmd/postgram
 ## Install from source (macOS / Linux)
 
 ```bash
-git clone https://github.com/Gentleman-Programming/postgram.git
+git clone https://github.com/vertigo7x/postgram.git
 cd postgram
 go install ./cmd/postgram
 
