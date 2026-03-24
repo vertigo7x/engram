@@ -62,7 +62,7 @@ go build -ldflags="-X main.version=local-$v" -o engram.exe ./cmd/engram
 > **Windows notes:**
 > - Engram requires `ENGRAM_DATABASE_URL` to point at PostgreSQL
 > - Override with `ENGRAM_DATA_DIR` environment variable
-> - All core features work natively: CLI, MCP server, TUI, HTTP API, Git Sync
+> - All core features work natively: CLI, MCP server, TUI, HTTP API
 > - No WSL required for the core binary — it's a native Windows executable
 
 ---

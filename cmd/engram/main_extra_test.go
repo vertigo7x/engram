@@ -18,7 +18,6 @@ import (
 
 	engramsrv "github.com/Gentleman-Programming/engram/internal/server"
 	"github.com/Gentleman-Programming/engram/internal/store"
-	engramsync "github.com/Gentleman-Programming/engram/internal/sync"
 	"github.com/Gentleman-Programming/engram/internal/testutil"
 	"github.com/Gentleman-Programming/engram/internal/tui"
 
@@ -95,9 +94,6 @@ func stubRuntimeHooks(t *testing.T) {
 	oldStoreStats := storeStats
 	oldStoreExport := storeExport
 	oldJSONMarshalIndent := jsonMarshalIndent
-	oldSyncStatus := syncStatus
-	oldSyncImport := syncImport
-	oldSyncExport := syncExport
 
 	storeNew = store.New
 	newHTTPServer = func(s *store.Store, _ int, version string) *engramsrv.Server { return engramsrv.New(s, 0, version) }
@@ -124,13 +120,6 @@ func stubRuntimeHooks(t *testing.T) {
 	storeStats = func(s *store.Store) (*store.Stats, error) { return s.Stats() }
 	storeExport = func(s *store.Store) (*store.ExportData, error) { return s.Export() }
 	jsonMarshalIndent = json.MarshalIndent
-	syncStatus = func(sy *engramsync.Syncer) (localChunks int, remoteChunks int, pendingImport int, err error) {
-		return sy.Status()
-	}
-	syncImport = func(sy *engramsync.Syncer) (*engramsync.ImportResult, error) { return sy.Import() }
-	syncExport = func(sy *engramsync.Syncer, createdBy, project string) (*engramsync.SyncResult, error) {
-		return sy.Export(createdBy, project)
-	}
 
 	t.Cleanup(func() {
 		storeNew = oldStoreNew
@@ -148,9 +137,6 @@ func stubRuntimeHooks(t *testing.T) {
 		storeStats = oldStoreStats
 		storeExport = oldStoreExport
 		jsonMarshalIndent = oldJSONMarshalIndent
-		syncStatus = oldSyncStatus
-		syncImport = oldSyncImport
-		syncExport = oldSyncExport
 	})
 }
 
@@ -344,7 +330,6 @@ func TestStoreInitFailurePaths(t *testing.T) {
 		cmdStats,
 		cmdExport,
 		cmdImport,
-		cmdSync,
 	}
 
 	argsByCmd := [][]string{
@@ -357,7 +342,6 @@ func TestStoreInitFailurePaths(t *testing.T) {
 		{"engram", "stats"},
 		{"engram", "export"},
 		{"engram", "import", importFile},
-		{"engram", "sync"},
 	}
 
 	for i, fn := range cmds {
@@ -437,7 +421,6 @@ func TestMainDispatchRemainingCommands(t *testing.T) {
 		{name: "stats", args: []string{"engram", "stats"}},
 		{name: "export", args: []string{"engram", "export", filepath.Join(t.TempDir(), "exp.json")}},
 		{name: "import", args: []string{"engram", "import", importFile}},
-		{name: "sync", args: []string{"engram", "sync", "--all"}},
 	}
 
 	for _, tc := range tests {
@@ -449,91 +432,6 @@ func TestMainDispatchRemainingCommands(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestCmdSyncAdditionalBranches(t *testing.T) {
-	stubExitWithPanic(t)
-
-	t.Run("all projects empty export message", func(t *testing.T) {
-		workDir := t.TempDir()
-		withCwd(t, workDir)
-		cfg := testConfig(t)
-
-		withArgs(t, "engram", "sync", "--all")
-		stdout, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
-		if recovered != nil || stderr != "" {
-			t.Fatalf("expected clean run, panic=%v stderr=%q", recovered, stderr)
-		}
-		if !strings.Contains(stdout, "Exporting ALL memories") || !strings.Contains(stdout, "Nothing new to sync") {
-			t.Fatalf("unexpected output: %q", stdout)
-		}
-	})
-
-	t.Run("status parse error", func(t *testing.T) {
-		workDir := t.TempDir()
-		withCwd(t, workDir)
-		cfg := testConfig(t)
-
-		if err := os.MkdirAll(filepath.Join(workDir, ".engram"), 0755); err != nil {
-			t.Fatalf("mkdir .engram: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(workDir, ".engram", "manifest.json"), []byte("{bad json"), 0644); err != nil {
-			t.Fatalf("write manifest: %v", err)
-		}
-
-		withArgs(t, "engram", "sync", "--status")
-		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
-		if _, ok := recovered.(exitCode); !ok {
-			t.Fatalf("expected fatal exit, got %v", recovered)
-		}
-		if !strings.Contains(stderr, "parse manifest") {
-			t.Fatalf("unexpected stderr: %q", stderr)
-		}
-	})
-
-	t.Run("import parse error", func(t *testing.T) {
-		workDir := t.TempDir()
-		withCwd(t, workDir)
-		cfg := testConfig(t)
-
-		if err := os.MkdirAll(filepath.Join(workDir, ".engram"), 0755); err != nil {
-			t.Fatalf("mkdir .engram: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(workDir, ".engram", "manifest.json"), []byte("{bad json"), 0644); err != nil {
-			t.Fatalf("write manifest: %v", err)
-		}
-
-		withArgs(t, "engram", "sync", "--import")
-		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
-		if _, ok := recovered.(exitCode); !ok {
-			t.Fatalf("expected fatal exit, got %v", recovered)
-		}
-		if !strings.Contains(stderr, "parse manifest") {
-			t.Fatalf("unexpected stderr: %q", stderr)
-		}
-	})
-
-	t.Run("export parse error", func(t *testing.T) {
-		workDir := t.TempDir()
-		withCwd(t, workDir)
-		cfg := testConfig(t)
-
-		if err := os.MkdirAll(filepath.Join(workDir, ".engram"), 0755); err != nil {
-			t.Fatalf("mkdir .engram: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(workDir, ".engram", "manifest.json"), []byte("{bad json"), 0644); err != nil {
-			t.Fatalf("write manifest: %v", err)
-		}
-
-		withArgs(t, "engram", "sync")
-		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
-		if _, ok := recovered.(exitCode); !ok {
-			t.Fatalf("expected fatal exit, got %v", recovered)
-		}
-		if !strings.Contains(stderr, "parse manifest") {
-			t.Fatalf("unexpected stderr: %q", stderr)
-		}
-	})
 }
 
 func TestCmdImportStoreImportFailure(t *testing.T) {
@@ -608,61 +506,6 @@ func TestCmdStatsNoProjectsYet(t *testing.T) {
 	if !strings.Contains(stdout, "Projects:     none yet") {
 		t.Fatalf("expected empty projects output, got: %q", stdout)
 	}
-}
-
-func TestCmdSyncImportEmptyAndMixedChunks(t *testing.T) {
-	stubExitWithPanic(t)
-
-	t.Run("import with empty manifest", func(t *testing.T) {
-		workDir := t.TempDir()
-		withCwd(t, workDir)
-		cfg := testConfig(t)
-
-		if err := os.MkdirAll(filepath.Join(workDir, ".engram"), 0755); err != nil {
-			t.Fatalf("mkdir .engram: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(workDir, ".engram", "manifest.json"), []byte(`{"version":1,"chunks":[]}`), 0644); err != nil {
-			t.Fatalf("write manifest: %v", err)
-		}
-
-		withArgs(t, "engram", "sync", "--import")
-		stdout, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
-		if recovered != nil || stderr != "" {
-			t.Fatalf("empty import failed: panic=%v stderr=%q", recovered, stderr)
-		}
-		if !strings.Contains(stdout, "Already up to date") || strings.Contains(stdout, "already imported") {
-			t.Fatalf("unexpected empty import output: %q", stdout)
-		}
-	})
-
-	t.Run("import new plus skipped chunk", func(t *testing.T) {
-		workDir := t.TempDir()
-		withCwd(t, workDir)
-
-		exportCfg := testConfig(t)
-		importCfg := testConfig(t)
-
-		mustSeedObservation(t, exportCfg, "mix-1", "mix", "note", "one", "content-one", "project")
-		withArgs(t, "engram", "sync", "--all")
-		_, _, _ = captureOutputAndRecover(t, func() { cmdSync(exportCfg) })
-
-		withArgs(t, "engram", "sync", "--import")
-		_, _, _ = captureOutputAndRecover(t, func() { cmdSync(importCfg) })
-
-		time.Sleep(1100 * time.Millisecond)
-		mustSeedObservation(t, exportCfg, "mix-2", "mix", "note", "two", "content-two", "project")
-		withArgs(t, "engram", "sync", "--all")
-		_, _, _ = captureOutputAndRecover(t, func() { cmdSync(exportCfg) })
-
-		withArgs(t, "engram", "sync", "--import")
-		stdout, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(importCfg) })
-		if recovered != nil || stderr != "" {
-			t.Fatalf("mixed import failed: panic=%v stderr=%q", recovered, stderr)
-		}
-		if !strings.Contains(stdout, "Imported 1 new chunk(s)") || !strings.Contains(stdout, "Skipped:") {
-			t.Fatalf("unexpected mixed import output: %q", stdout)
-		}
-	})
 }
 
 func TestCommandErrorSeamsAndUncoveredBranches(t *testing.T) {
@@ -763,28 +606,6 @@ func TestCommandErrorSeamsAndUncoveredBranches(t *testing.T) {
 		}
 		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdExport(cfg) })
 		assertFatal(t, stderr, recovered, "forced marshal error")
-	})
-
-	t.Run("sync seam status error", func(t *testing.T) {
-		withCwd(t, t.TempDir())
-		withArgs(t, "engram", "sync", "--status")
-		syncStatus = func(*engramsync.Syncer) (int, int, int, error) {
-			return 0, 0, 0, errors.New("forced status error")
-		}
-		_, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
-		assertFatal(t, stderr, recovered, "forced status error")
-	})
-
-	t.Run("sync uses explicit project flag", func(t *testing.T) {
-		withCwd(t, t.TempDir())
-		withArgs(t, "engram", "sync", "--project", "explicit-proj")
-		stdout, stderr, recovered := captureOutputAndRecover(t, func() { cmdSync(cfg) })
-		if recovered != nil || stderr != "" {
-			t.Fatalf("sync with --project should succeed, panic=%v stderr=%q", recovered, stderr)
-		}
-		if !strings.Contains(stdout, `Exporting memories for project "explicit-proj"`) {
-			t.Fatalf("expected explicit project output, got: %q", stdout)
-		}
 	})
 
 }

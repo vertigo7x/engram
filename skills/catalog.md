@@ -14,5 +14,5 @@
 - ui-elements: connected pages, cards, metrics, and detail flow rules.
 - dashboard-htmx: server-rendered htmx interaction rules.
 - visual-language: TUI-aligned visual identity and spacing rules.
-- business-rules: sync, admin policy, and product rule guardrails.
+- business-rules: access, admin policy, and product rule guardrails.
 - cultural-norms: collaboration and quality norms for contributors and agents.

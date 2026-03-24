@@ -26,7 +26,6 @@ import (
 	"github.com/Gentleman-Programming/engram/internal/mcp"
 	"github.com/Gentleman-Programming/engram/internal/server"
 	"github.com/Gentleman-Programming/engram/internal/store"
-	engramsync "github.com/Gentleman-Programming/engram/internal/sync"
 	"github.com/Gentleman-Programming/engram/internal/tui"
 	versioncheck "github.com/Gentleman-Programming/engram/internal/version"
 
@@ -65,14 +64,6 @@ var (
 	storeStats         = func(s *store.Store) (*store.Stats, error) { return s.Stats() }
 	storeExport        = func(s *store.Store) (*store.ExportData, error) { return s.Export() }
 	jsonMarshalIndent  = json.MarshalIndent
-
-	syncStatus = func(sy *engramsync.Syncer) (localChunks int, remoteChunks int, pendingImport int, err error) {
-		return sy.Status()
-	}
-	syncImport = func(sy *engramsync.Syncer) (*engramsync.ImportResult, error) { return sy.Import() }
-	syncExport = func(sy *engramsync.Syncer, createdBy, project string) (*engramsync.SyncResult, error) {
-		return sy.Export(createdBy, project)
-	}
 
 	exitFunc = os.Exit
 
@@ -133,8 +124,6 @@ func main() {
 		cmdExport(cfg)
 	case "import":
 		cmdImport(cfg)
-	case "sync":
-		cmdSync(cfg)
 	case "version", "--version", "-v":
 		fmt.Printf("engram %s\n", version)
 	case "help", "--help", "-h":
@@ -669,113 +658,6 @@ func cmdImport(cfg store.Config) {
 	fmt.Printf("  Prompts:      %d\n", result.PromptsImported)
 }
 
-func cmdSync(cfg store.Config) {
-	// Parse flags
-	doImport := false
-	doStatus := false
-	doAll := false
-	project := ""
-	for i := 2; i < len(os.Args); i++ {
-		switch os.Args[i] {
-		case "--import":
-			doImport = true
-		case "--status":
-			doStatus = true
-		case "--all":
-			doAll = true
-		case "--project":
-			if i+1 < len(os.Args) {
-				project = os.Args[i+1]
-				i++
-			}
-		}
-	}
-
-	// Default project to current directory name (so sync only exports
-	// memories for THIS project, not everything in the global DB).
-	// --all skips project filtering entirely — exports everything.
-	if !doAll && project == "" {
-		if cwd, err := os.Getwd(); err == nil {
-			project = filepath.Base(cwd)
-		}
-	}
-
-	syncDir := ".engram"
-
-	s, err := storeNew(cfg)
-	if err != nil {
-		fatal(err)
-	}
-	defer s.Close()
-
-	sy := engramsync.NewLocal(s, syncDir)
-
-	if doStatus {
-		local, remote, pending, err := syncStatus(sy)
-		if err != nil {
-			fatal(err)
-		}
-		fmt.Printf("Sync status:\n")
-		fmt.Printf("  Local chunks:    %d\n", local)
-		fmt.Printf("  Remote chunks:   %d\n", remote)
-		fmt.Printf("  Pending import:  %d\n", pending)
-		return
-	}
-
-	if doImport {
-		result, err := syncImport(sy)
-		if err != nil {
-			fatal(err)
-		}
-
-		if result.ChunksImported == 0 {
-			fmt.Println("Already up to date — no new chunks to import.")
-			if result.ChunksSkipped > 0 {
-				fmt.Printf("  (%d chunks already imported)\n", result.ChunksSkipped)
-			}
-			return
-		}
-
-		fmt.Printf("Imported %d new chunk(s) from .engram/\n", result.ChunksImported)
-		fmt.Printf("  Sessions:     %d\n", result.SessionsImported)
-		fmt.Printf("  Observations: %d\n", result.ObservationsImported)
-		fmt.Printf("  Prompts:      %d\n", result.PromptsImported)
-		if result.ChunksSkipped > 0 {
-			fmt.Printf("  Skipped:      %d (already imported)\n", result.ChunksSkipped)
-		}
-		return
-	}
-
-	// Export: DB → new chunk
-	username := engramsync.GetUsername()
-	if doAll {
-		fmt.Println("Exporting ALL memories (all projects)...")
-	} else {
-		fmt.Printf("Exporting memories for project %q...\n", project)
-	}
-	result, err := syncExport(sy, username, project)
-	if err != nil {
-		fatal(err)
-	}
-
-	if result.IsEmpty {
-		if doAll {
-			fmt.Println("Nothing new to sync — all memories already exported.")
-		} else {
-			fmt.Printf("Nothing new to sync for project %q — all memories already exported.\n", project)
-		}
-		return
-	}
-
-	fmt.Printf("Created chunk %s\n", result.ChunkID)
-	fmt.Printf("  Sessions:     %d\n", result.SessionsExported)
-	fmt.Printf("  Observations: %d\n", result.ObservationsExported)
-	fmt.Printf("  Prompts:      %d\n", result.PromptsExported)
-	fmt.Println()
-	fmt.Println("Add to git:")
-	fmt.Printf("  git add .engram/ && git commit -m \"sync engram memories\"\n")
-}
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 func printUsage() {
@@ -793,18 +675,13 @@ Commands:
   search <query>     Search memories [--type TYPE] [--project PROJECT] [--scope SCOPE] [--limit N]
   save <title> <msg> Save a memory  [--type TYPE] [--project PROJECT] [--scope SCOPE]
   timeline <obs_id>  Show chronological context around an observation [--before N] [--after N]
-  context [project]  Show recent context from previous sessions
-  stats              Show memory system statistics
-  export [file]      Export all memories to JSON (default: engram-export.json)
-  import <file>      Import memories from a JSON export file
-  sync               Export new memories as compressed chunk to .engram/
-                       --import   Import new chunks from .engram/ into local DB
-                       --status   Show sync status (local vs remote chunks)
-                       --project  Filter export to a specific project
-                       --all      Export ALL projects (ignore directory-based filter)
+	context [project]  Show recent context from previous sessions
+	stats              Show memory system statistics
+	export [file]      Export all memories to JSON (default: engram-export.json)
+	import <file>      Import memories from a JSON export file
 
-  version            Print version
-  help               Show this help
+	version            Print version
+	help               Show this help
 
 Environment:
   ENGRAM_DATA_DIR    Override data directory (default: ~/.engram)

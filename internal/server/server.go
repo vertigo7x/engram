@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/Gentleman-Programming/engram/internal/auth"
 	"github.com/Gentleman-Programming/engram/internal/store"
@@ -25,31 +24,15 @@ var loadServerStats = func(s *store.Store) (*store.Stats, error) {
 	return s.Stats()
 }
 
-// SyncStatusProvider returns the current sync status. This is implemented
-// by autosync.Manager and injected from cmd/engram/main.go.
-type SyncStatusProvider interface {
-	Status() SyncStatus
-}
-
-// SyncStatus mirrors autosync.Status to avoid a direct import cycle.
-type SyncStatus struct {
-	Phase               string     `json:"phase"`
-	LastError           string     `json:"last_error,omitempty"`
-	ConsecutiveFailures int        `json:"consecutive_failures"`
-	BackoffUntil        *time.Time `json:"backoff_until,omitempty"`
-	LastSyncAt          *time.Time `json:"last_sync_at,omitempty"`
-}
-
 type Server struct {
-	store      *store.Store
-	mux        *http.ServeMux
-	host       string
-	port       int
-	version    string
-	listen     func(network, address string) (net.Listener, error)
-	serve      func(net.Listener, http.Handler) error
-	onWrite    func() // called after successful local writes (for autosync notification)
-	syncStatus SyncStatusProvider
+	store   *store.Store
+	mux     *http.ServeMux
+	host    string
+	port    int
+	version string
+	listen  func(network, address string) (net.Listener, error)
+	serve   func(net.Listener, http.Handler) error
+	onWrite func()
 }
 
 func New(s *store.Store, port int, version string) *Server {
@@ -84,17 +67,11 @@ func (s *Server) SetMCPHandler(path string, handler http.Handler) {
 }
 
 // SetOnWrite configures a callback invoked after every successful local write.
-// This is used to notify autosync.Manager via NotifyDirty().
 func (s *Server) SetOnWrite(fn func()) {
 	s.onWrite = fn
 }
 
-// SetSyncStatus configures the sync status provider for the /sync/status endpoint.
-func (s *Server) SetSyncStatus(provider SyncStatusProvider) {
-	s.syncStatus = provider
-}
-
-// notifyWrite calls the onWrite callback if configured (best-effort, non-blocking).
+// notifyWrite calls the onWrite callback if configured.
 func (s *Server) notifyWrite() {
 	if s.onWrite != nil {
 		s.onWrite()
@@ -168,8 +145,6 @@ func (s *Server) routes() {
 	// Project migration
 	s.mux.HandleFunc("POST /projects/migrate", s.handleMigrateProject)
 
-	// Sync status (degraded-state visibility for autosync)
-	s.mux.HandleFunc("GET /sync/status", s.handleSyncStatus)
 }
 
 // ─── Handlers ────────────────────────────────────────────────────────────────
@@ -542,28 +517,6 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonResponse(w, http.StatusOK, stats)
-}
-
-// ─── Sync Status ─────────────────────────────────────────────────────────────
-
-func (s *Server) handleSyncStatus(w http.ResponseWriter, r *http.Request) {
-	if s.syncStatus == nil {
-		jsonResponse(w, http.StatusOK, map[string]any{
-			"enabled": false,
-			"message": "background sync is not configured",
-		})
-		return
-	}
-
-	status := s.syncStatus.Status()
-	jsonResponse(w, http.StatusOK, map[string]any{
-		"enabled":              true,
-		"phase":                status.Phase,
-		"last_error":           status.LastError,
-		"consecutive_failures": status.ConsecutiveFailures,
-		"backoff_until":        status.BackoffUntil,
-		"last_sync_at":         status.LastSyncAt,
-	})
 }
 
 // ─── Project Migration ───────────────────────────────────────────────────────

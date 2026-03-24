@@ -42,10 +42,9 @@ Six interfaces:
 engram/
 ├── cmd/engram/main.go              # CLI entrypoint — all commands
 ├── internal/
-│   ├── store/store.go              # Core data layer: PostgreSQL + search + sync journal
+│   ├── store/store.go              # Core data layer: PostgreSQL + search
 │   ├── server/server.go            # HTTP REST API server (port 7437)
 │   ├── mcp/mcp.go                  # MCP tool registry (13 tools)
-│   ├── sync/sync.go                # Git sync: manifest + chunks (gzipped JSONL)
 │   └── tui/                        # Bubbletea terminal UI
 │       ├── model.go                # Screen constants, Model struct, Init(), custom messages
 │       ├── styles.go               # Lipgloss styles (Catppuccin Mocha palette)
@@ -69,7 +68,6 @@ engram/
 - **sessions** — `id` (UUID PK, deterministic effective session id), `client_session_id`, `project`, `directory`, `auth_issuer`, `auth_subject`, `auth_username`, `auth_email`, `started_at`, `ended_at`, `summary`, `status`
 - **observations** — `id` (UUID PK), `session_id` (FK), `sync_id` (UUID), `type`, `title`, `content`, `tool_name`, `project`, `scope`, `topic_key`, `normalized_hash`, `revision_count`, `duplicate_count`, `last_seen_at`, `created_at`, `updated_at`, `deleted_at`
 - **user_prompts** — `id` (UUID PK), `session_id` (FK), `sync_id` (UUID), `content`, `project`, `created_at`
-- **sync_chunks** — `chunk_id` (TEXT PK), `imported_at` — tracks which chunks have been imported to prevent duplicates
 
 ### PostgreSQL Configuration
 
@@ -114,7 +112,6 @@ engram context [project]  Show recent context from previous sessions
 engram stats              Show memory system statistics
 engram export [file]      Export all memories to JSON (default: engram-export.json)
 engram import <file>      Import memories from a JSON export file
-engram sync               Export new memories as chunk [--import] [--status] [--project NAME] [--all]
 engram version            Print version
 engram help               Show help
 ```
@@ -608,39 +605,7 @@ Share memories across machines, backup, or migrate:
 - `engram export` — JSON dump of all sessions, observations, prompts
 - `engram import <file>` — Load from JSON, sessions use INSERT OR IGNORE (skip duplicates), atomic transaction
 
-### 6. Git Sync (Chunked)
-
-Share memories through git repositories using compressed chunks with a manifest index.
-
-- `engram sync` — Exports new memories as a gzipped JSONL chunk to `.engram/chunks/`
-- `engram sync --all` — Exports ALL memories from every project (ignores directory-based filter)
-- `engram sync --import` — Imports chunks listed in the manifest that haven't been imported yet
-- `engram sync --status` — Shows how many chunks exist locally vs remotely, and how many are pending import
-- `engram sync --project NAME` — Filters export to a specific project
-
-**Architecture**:
-```
-.engram/
-├── manifest.json          ← index of all chunks (small, git-mergeable)
-├── chunks/
-│   ├── a3f8c1d2.jsonl.gz ← chunk 1 (gzipped JSONL)
-│   ├── b7d2e4f1.jsonl.gz ← chunk 2
-│   └── ...
-└── chunks/metadata tracked in PostgreSQL import state
-```
-
-**Why chunks?**
-- Each `engram sync` creates a NEW chunk — old chunks are never modified
-- No merge conflicts: each dev creates independent chunks, git just adds files
-- Chunks are content-hashed (SHA-256 prefix) — each chunk is imported only once
-- The manifest is the only file git diffs — it's small and append-only
-- Compressed: a chunk with 8 sessions + 10 observations = ~2KB
-
-**Import flow**: Any client or team workflow can run `engram sync --import` to load new chunks from `.engram/manifest.json` into the local database.
-
-**Tracking**: The local DB stores a `sync_chunks` table with chunk IDs that have been imported. This prevents re-importing the same data if `sync --import` runs multiple times.
-
-### 7. AI Compression (Agent-Driven)
+### 6. AI Compression (Agent-Driven)
 
 Instead of a separate LLM service, the agent itself compresses observations. The agent already has the model, context, and API key.
 

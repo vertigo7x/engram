@@ -123,7 +123,7 @@ engram/
 │   ├── store/store.go              # Core: PostgreSQL + all data ops
 │   ├── server/server.go            # HTTP REST API (port 7437)
 │   ├── mcp/mcp.go                  # MCP tool registry (13 tools)
-│   ├── sync/sync.go                # Git sync: manifest + compressed chunks
+│   ├── auth/oidc.go                # OIDC auth helpers for remote access
 │   └── tui/                        # Bubbletea terminal UI
 │       ├── model.go                # Screen constants, Model, Init()
 │       ├── styles.go               # Lipgloss styles (Catppuccin Mocha)
@@ -152,7 +152,5 @@ engram context [project]  Recent context from previous sessions
 engram stats              Memory statistics
 engram export [file]      Export all memories to JSON
 engram import <file>      Import memories from JSON
-engram sync               Export new memories as compressed chunk to .engram/
-engram sync --all         Export ALL projects (ignore directory-based filter)
 engram version            Show version
 ```

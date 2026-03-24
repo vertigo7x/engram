@@ -21,27 +21,60 @@
 
 Your AI coding agent forgets everything when the session ends. Engram gives it a brain.
 
-A **Go binary** backed by PostgreSQL, exposed via CLI, HTTP API, MCP over HTTP, and an interactive TUI. Works with **any agent** that supports MCP — Claude Code, OpenCode, Gemini CLI, Codex, VS Code (Copilot), Antigravity, Cursor, Windsurf, or anything else.
+Engram is a **remote MCP memory service** for coding agents. Run one Go binary, connect it to PostgreSQL, expose `/mcp`, and point your agents at it.
 
 ```
-Agent (Claude Code / OpenCode / Gemini CLI / Codex / VS Code / Antigravity / ...)
-    ↓ MCP HTTP
-Engram (single Go binary, `engram serve`)
+Agent (Claude Code / OpenCode / Gemini CLI / Codex / VS Code / ...)
+    ↓ MCP over HTTP
+Engram (`engram serve`)
     ↓
 PostgreSQL (`ENGRAM_DATABASE_URL`)
 ```
 
 ## Quick Start
 
-### Install
+### 1. Install
+
+From the repository:
 
 ```bash
-brew install gentleman-programming/tap/engram
+git clone https://github.com/Gentleman-Programming/engram.git
+cd engram
+go build -o engram ./cmd/engram
 ```
 
-Windows, Linux, and other install methods → [docs/INSTALLATION.md](docs/INSTALLATION.md)
+Or use the published Docker image from Docker Hub:
 
-### Setup Your Agent
+```bash
+docker pull vertigo7x/engram:latest
+```
+
+Current install/runtime paths → build from this repository or run the Docker image.
+
+### 2. Start Engram
+
+Binary:
+
+```bash
+export ENGRAM_DATABASE_URL='postgres://user:pass@host:5432/engram?sslmode=disable'
+engram serve
+```
+
+Docker:
+
+```bash
+docker run --rm -p 7437:7437 \
+  -e ENGRAM_DATABASE_URL='postgres://user:pass@host:5432/engram?sslmode=disable' \
+  engramai/engram:latest serve
+```
+
+Default endpoints:
+- Health: `http://127.0.0.1:7437/health`
+- MCP: `http://127.0.0.1:7437/mcp`
+
+For team/shared setups, put Engram behind your normal ingress or reverse proxy and publish a stable URL such as `https://engram.example.com/mcp`.
+
+### 3. Connect Your Agent
 
 | Agent | One-liner |
 |-------|-----------|
@@ -54,18 +87,26 @@ Windows, Linux, and other install methods → [docs/INSTALLATION.md](docs/INSTAL
 
 Full per-agent config, Memory Protocol, and compaction survival → [docs/AGENT-SETUP.md](docs/AGENT-SETUP.md)
 
-That's it. No Node.js, no Python, no sidecar services. **One binary, one PostgreSQL database.**
+That's it. No Node.js, no Python, no sidecar services. **One binary, one PostgreSQL database, one MCP HTTP endpoint.**
 
-## How It Works
+## The Main Flow
 
 ```
-1. Agent completes significant work (bugfix, architecture decision, etc.)
-2. Agent calls mem_save → title, type, What/Why/Where/Learned
-3. Engram persists memories to PostgreSQL
-4. Next session: agent searches memory, gets relevant context
+1. Agent connects to Engram over MCP HTTP
+2. Agent saves decisions, bugfixes, and summaries with `mem_save` / `mem_session_summary`
+3. Engram stores them in PostgreSQL
+4. Future sessions recover context with `mem_context`, `mem_search`, and `mem_timeline`
 ```
 
 Full details on session lifecycle, topic keys, and memory hygiene → [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
+## Why Engram
+
+- Shared memory for local agents, cloud agents, and team deployments
+- Postgres-backed storage instead of per-machine local files
+- MCP over HTTP, so agent setup is just remote server config
+- Session-aware memory with summaries, prompts, context, and timeline drill-in
+- CLI and TUI included for inspection, debugging, and import/export workflows
 
 ## MCP Tools
 
@@ -75,7 +116,7 @@ Full details on session lifecycle, topic keys, and memory hygiene → [docs/ARCH
 | `mem_update` | Update by ID |
 | `mem_delete` | Soft or hard delete |
 | `mem_suggest_topic_key` | Stable key for evolving topics |
-| `mem_search` | Full-text search |
+| `mem_search` | Search memory |
 | `mem_session_summary` | End-of-session save |
 | `mem_context` | Recent session context |
 | `mem_timeline` | Chronological drill-in |
@@ -86,6 +127,18 @@ Full details on session lifecycle, topic keys, and memory hygiene → [docs/ARCH
 | `mem_session_end` | Mark session complete |
 
 Full tool reference → [docs/ARCHITECTURE.md#mcp-tools](docs/ARCHITECTURE.md#mcp-tools)
+
+## Operating Engram
+
+```bash
+engram serve              # Start HTTP API + MCP over HTTP
+engram stats              # Inspect memory totals
+engram tui                # Browse memory manually
+engram export backup.json # Export all data
+engram import backup.json # Import a backup
+```
+
+The CLI is mainly for operators, debugging, migration, and manual inspection. Agents should usually talk to Engram through MCP over HTTP.
 
 ## Terminal UI
 
@@ -102,19 +155,6 @@ engram tui
 
 **Navigation**: `j/k` vim keys, `Enter` to drill in, `/` to search, `Esc` back. Catppuccin Mocha theme.
 
-## Git Sync
-
-Share memories across machines. Uses compressed chunks — no merge conflicts, no huge files.
-
-```bash
-engram sync                    # Export new memories as compressed chunk
-git add .engram/ && git commit -m "sync engram memories"
-engram sync --import           # On another machine: import new chunks
-engram sync --status           # Check sync status
-```
-
-Full sync documentation → [DOCS.md](DOCS.md)
-
 ## CLI Reference
 
 | Command | Description |
@@ -128,8 +168,9 @@ Full sync documentation → [DOCS.md](DOCS.md)
 | `engram stats` | Memory statistics |
 | `engram export [file]` | Export to JSON |
 | `engram import <file>` | Import from JSON |
-| `engram sync` | Git sync export |
 | `engram version` | Show version |
+
+Most users only need `engram serve` plus the agent config from `docs/AGENT-SETUP.md`.
 
 ## Documentation
 

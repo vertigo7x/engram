@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/Gentleman-Programming/engram/internal/store"
 	"github.com/Gentleman-Programming/engram/internal/testutil"
@@ -162,106 +161,6 @@ func TestAdditionalServerErrorBranches(t *testing.T) {
 	}
 }
 
-// ─── Sync Status Tests ───────────────────────────────────────────────────────
-
-// stubSyncStatusProvider is a fake SyncStatusProvider for tests.
-type stubSyncStatusProvider struct {
-	status SyncStatus
-}
-
-func (s *stubSyncStatusProvider) Status() SyncStatus {
-	return s.status
-}
-
-func TestSyncStatusNotConfigured(t *testing.T) {
-	srv := New(newServerTestStore(t), 0, "test-version")
-	// No sync status provider set — should return enabled: false.
-	req := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-
-	var resp map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp["enabled"] != false {
-		t.Fatalf("expected enabled=false when no provider, got %v", resp["enabled"])
-	}
-}
-
-func TestSyncStatusHealthy(t *testing.T) {
-	now := time.Now()
-	provider := &stubSyncStatusProvider{
-		status: SyncStatus{
-			Phase:      "healthy",
-			LastSyncAt: &now,
-		},
-	}
-
-	srv := New(newServerTestStore(t), 0, "test-version")
-	srv.SetSyncStatus(provider)
-
-	req := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-
-	var resp map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp["enabled"] != true {
-		t.Fatalf("expected enabled=true, got %v", resp["enabled"])
-	}
-	if resp["phase"] != "healthy" {
-		t.Fatalf("expected phase=healthy, got %v", resp["phase"])
-	}
-}
-
-func TestSyncStatusDegraded(t *testing.T) {
-	backoff := time.Now().Add(5 * time.Minute)
-	provider := &stubSyncStatusProvider{
-		status: SyncStatus{
-			Phase:               "push_failed",
-			LastError:           "network timeout",
-			ConsecutiveFailures: 3,
-			BackoffUntil:        &backoff,
-		},
-	}
-
-	srv := New(newServerTestStore(t), 0, "test-version")
-	srv.SetSyncStatus(provider)
-
-	req := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
-	rec := httptest.NewRecorder()
-	srv.Handler().ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-
-	var resp map[string]any
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp["phase"] != "push_failed" {
-		t.Fatalf("expected phase=push_failed, got %v", resp["phase"])
-	}
-	if resp["last_error"] != "network timeout" {
-		t.Fatalf("expected last_error=network timeout, got %v", resp["last_error"])
-	}
-	if resp["consecutive_failures"] != float64(3) {
-		t.Fatalf("expected consecutive_failures=3, got %v", resp["consecutive_failures"])
-	}
-}
-
 // ─── OnWrite Notification Tests ──────────────────────────────────────────────
 
 func TestOnWriteCalledAfterSuccessfulWrites(t *testing.T) {
@@ -363,11 +262,6 @@ func TestOnWriteNotCalledOnReadOperations(t *testing.T) {
 	statsReq := httptest.NewRequest(http.MethodGet, "/stats", nil)
 	statsRec := httptest.NewRecorder()
 	h.ServeHTTP(statsRec, statsReq)
-
-	// GET /sync/status → read-only, no onWrite.
-	syncReq := httptest.NewRequest(http.MethodGet, "/sync/status", nil)
-	syncRec := httptest.NewRecorder()
-	h.ServeHTTP(syncRec, syncReq)
 
 	if writeCount.Load() != 0 {
 		t.Fatalf("expected 0 onWrite calls for read operations, got %d", writeCount.Load())

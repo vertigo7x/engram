@@ -21,18 +21,19 @@ Use this skill when:
 ## Placement Rules
 
 1. Put behavior near its domain, not near the caller that happens to use it.
-2. Keep templates in `internal/cloud/dashboard/*.templ` and generated files checked in.
-3. Keep dashboard styling in `internal/cloud/dashboard/static/styles.css` unless a new static asset is clearly needed.
-4. Put HTTP handlers in server packages, not in store packages.
-5. Put persistence queries in store/cloudstore, not in handlers.
+2. Put HTTP handlers in `internal/server`, not in `internal/store`.
+3. Put MCP tool wiring in `internal/mcp`, not in CLI or store packages.
+4. Put auth integration in `internal/auth`, not in handlers or store code.
+5. Put persistence queries in `internal/store`, not in handlers.
 
 ---
 
 ## File Creation Rules
 
-- New route -> handler + tests in dashboard/server package
-- New DB behavior -> store/cloudstore code + focused tests
-- New UI partial/page -> templ component + generated `_templ.go`
+- New route -> handler + tests in `internal/server`
+- New DB behavior -> `internal/store` code + focused tests
+- New MCP behavior -> `internal/mcp` code + focused tests
+- New TUI behavior -> `internal/tui` code + focused tests
 - New contributor guidance -> update docs/catalog in same change
 
 ---
