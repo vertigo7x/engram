@@ -3,6 +3,7 @@
 # Installation
 
 - [Docker](#docker)
+- [Helm](#helm)
 - [Windows](#windows)
 - [Install from source (macOS / Linux)](#install-from-source-macos--linux)
 - [Requirements](#requirements)
@@ -16,12 +17,14 @@
 ### Option A: Use the official published image
 
 ```bash
-docker pull vertigo7x/postgram:latest
+docker pull ghcr.io/vertigo7x/postgram:latest
 
 docker run --rm -p 7437:7437 \
   -e POSTGRAM_DATABASE_URL='postgres://user:pass@host:5432/postgram?sslmode=disable' \
-  vertigo7x/postgram:latest serve
+  ghcr.io/vertigo7x/postgram:latest serve
 ```
+
+The image is also published to Docker Hub as `vertigo7x/postgram:latest`.
 
 ### Option B: Build the image from this repository
 
@@ -38,6 +41,27 @@ docker run --rm -p 7437:7437 \
 Default endpoints:
 - Health: `http://127.0.0.1:7437/health`
 - MCP: `http://127.0.0.1:7437/mcp`
+
+---
+
+## Helm
+
+Published chart in GitHub Container Registry:
+
+```bash
+helm registry login ghcr.io
+
+helm install postgram oci://ghcr.io/vertigo7x/charts/postgram \
+  --version 0.1.2 \
+  --set database.url='postgres://user:pass@host:5432/postgram?sslmode=disable'
+```
+
+Local chart from this repository:
+
+```bash
+helm install postgram ./charts/postgram \
+  --set database.url='postgres://user:pass@host:5432/postgram?sslmode=disable'
+```
 
 ---
 

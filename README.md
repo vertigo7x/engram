@@ -43,13 +43,21 @@ cd postgram
 go build -o postgram ./cmd/postgram
 ```
 
-Or use the published Docker image from Docker Hub:
+Or use the published Docker image from GitHub Container Registry:
 
 ```bash
-docker pull vertigo7x/postgram:latest
+docker pull ghcr.io/vertigo7x/postgram:latest
 ```
 
+The image is also published to Docker Hub as `vertigo7x/postgram:latest`.
+
 Current install/runtime paths → build from this repository or run the Docker image.
+
+Helm chart installs are also available from GitHub Container Registry:
+
+```bash
+helm install postgram oci://ghcr.io/vertigo7x/charts/postgram --version 0.1.2
+```
 
 ### 2. Start Postgram
 
@@ -65,7 +73,7 @@ Docker:
 ```bash
 docker run --rm -p 7437:7437 \
   -e POSTGRAM_DATABASE_URL='postgres://user:pass@host:5432/postgram?sslmode=disable' \
-  postgramai/postgram:latest serve
+  ghcr.io/vertigo7x/postgram:latest serve
 ```
 
 Default endpoints:

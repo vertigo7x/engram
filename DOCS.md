@@ -151,12 +151,28 @@ docker run --rm -p 7437:7437 \
   postgram:local
 ```
 
-### Helm
-
-Chart location: `charts/postgram`
+Published image:
 
 ```bash
-helm install postgram ./charts/postgram
+docker pull ghcr.io/vertigo7x/postgram:latest
+```
+
+Docker Hub mirror:
+
+```bash
+docker pull vertigo7x/postgram:latest
+```
+
+### Helm
+
+Published OCI chart: `oci://ghcr.io/vertigo7x/charts/postgram`
+
+```bash
+helm registry login ghcr.io
+
+helm install postgram oci://ghcr.io/vertigo7x/charts/postgram \
+  --version 0.1.2 \
+  --set database.url="postgres://user:pass@postgres:5432/postgram?sslmode=disable"
 
 helm install postgram ./charts/postgram \
   --set database.url="postgres://user:pass@postgres:5432/postgram?sslmode=disable"
@@ -190,6 +206,11 @@ Recommended (pre-created Secret):
 kubectl create secret generic postgram-db \
   --from-literal=POSTGRAM_DATABASE_URL='postgres://user:pass@postgres:5432/postgram?sslmode=require' \
   -n postgram
+
+helm upgrade --install postgram oci://ghcr.io/vertigo7x/charts/postgram -n postgram \
+  --version 0.1.2 \
+  --set database.existingSecret=postgram-db \
+  --set database.urlSecretKey=POSTGRAM_DATABASE_URL
 
 helm upgrade --install postgram ./charts/postgram -n postgram \
   --set database.existingSecret=postgram-db \

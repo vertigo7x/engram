@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: vertigo7x/postgram
+  repository: ghcr.io/vertigo7x/postgram
   tag: latest
   pullPolicy: IfNotPresent
 

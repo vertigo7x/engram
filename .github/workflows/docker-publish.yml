@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   publish:
@@ -21,12 +22,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEFAULT_IMAGE_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/postgram
+      DEFAULT_GHCR_REPO: ghcr.io/${{ github.repository_owner }}/postgram
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Resolve image repository
-        id: image
+      - name: Resolve Docker Hub repository
+        id: dockerhub
         shell: bash
         run: |
           set -euo pipefail
@@ -36,7 +38,17 @@ jobs:
           fi
           repo="${repo,,}"
           echo "repository=$repo" >> "$GITHUB_OUTPUT"
-          echo "Using Docker image repository: $repo"
+          echo "Using Docker Hub repository: $repo"
+
+      - name: Resolve GHCR repository
+        id: ghcr
+        shell: bash
+        run: |
+          set -euo pipefail
+          repo="$DEFAULT_GHCR_REPO"
+          repo="${repo,,}"
+          echo "repository=$repo" >> "$GITHUB_OUTPUT"
+          echo "Using GHCR repository: $repo"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -47,11 +59,20 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ steps.image.outputs.repository }}
+          images: |
+            ${{ steps.dockerhub.outputs.repository }}
+            ${{ steps.ghcr.outputs.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
