@@ -627,6 +627,51 @@ Three-layer pattern for token-efficient memory retrieval:
 
 Example: `Set up API with <private>sk-abc123</private>` becomes `Set up API with [REDACTED]`
 
+### 9. Project Identifier Normalization
+
+The `project` field is the primary key for grouping memories across sessions and users. To ensure memories are shared correctly in team environments, agents must use a **normalized project identifier** — not a local file path.
+
+#### Why basename is not enough
+
+Two users can clone the same repository into directories with different names:
+- Alice: `/home/alice/work/postgram-fork`
+- Bob: `/home/bob/projects/postgram`
+
+Using the directory basename would create two separate projects (`postgram-fork` and `postgram`), fragmenting shared memory.
+
+#### Detection priority
+
+1. **Git remote origin** (universal — same across all machines):
+   ```bash
+   git remote get-url origin
+   # https://github.com/vertigo7x/postgram.git → github.com/vertigo7x/postgram
+   # git@github.com:vertigo7x/postgram.git     → github.com/vertigo7x/postgram
+   ```
+
+2. **Directory basename** (fallback when no git remote):
+   - Use the last segment of the working directory
+   - Automatically set scope to `personal` — a project without git is local and not shared
+
+#### Transformation table
+
+| Input | Output | Scope |
+|-------|--------|-------|
+| `https://github.com/owner/repo.git` | `github.com/owner/repo` | `project` |
+| `git@github.com:owner/repo.git` | `github.com/owner/repo` | `project` |
+| `https://gitlab.com/org/project.git` | `gitlab.com/org/project` | `project` |
+| `/home/alice/projects/my-app` (no git) | `my-app` | `personal` |
+| `C:\Users\bob\projects\my-app` (no git) | `my-app` | `personal` |
+
+#### Server-side defense
+
+The store applies normalization as a defense layer:
+- Absolute Unix paths (`/home/...`) → basename
+- Absolute Windows paths (`C:\...`) → basename
+- Already-normalized identifiers (`github.com/owner/repo`) → preserved as-is
+- Empty values → `"unknown"`
+
+The `directory` field in `sessions` always preserves the original local path for audit purposes.
+
 ### 4. User Prompt Storage
 
 Separate table captures what the USER asked (not just tool calls). Gives future sessions the "why" behind the "what" and participates in prompt search.

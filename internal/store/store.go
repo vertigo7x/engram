@@ -11,6 +11,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -649,8 +651,9 @@ func (s *Store) RecentSessions(project string, limit int) ([]SessionSummary, err
 	args := []any{}
 
 	if project != "" {
-		query += " AND s.project = ?"
-		args = append(args, project)
+		normalizedProject := normalizeProject(project)
+		query += ` AND (s.project = ? OR (s.project LIKE '/%' AND REVERSE(SPLIT_PART(REVERSE(s.project), '/', 1)) = ?) OR (s.project ~ '^[A-Za-z]:[/\\]' AND REVERSE(SPLIT_PART(REVERSE(REPLACE(s.project, '\', '/')), '/', 1)) = ?))`
+		args = append(args, normalizedProject, normalizedProject, normalizedProject)
 	}
 
 	query += " GROUP BY s.id ORDER BY MAX(COALESCE(o.created_at, s.started_at)) DESC LIMIT ?"
@@ -689,8 +692,9 @@ func (s *Store) AllSessions(project string, limit int) ([]SessionSummary, error)
 	args := []any{}
 
 	if project != "" {
-		query += " AND s.project = ?"
-		args = append(args, project)
+		normalizedProject := normalizeProject(project)
+		query += ` AND (s.project = ? OR (s.project LIKE '/%' AND REVERSE(SPLIT_PART(REVERSE(s.project), '/', 1)) = ?) OR (s.project ~ '^[A-Za-z]:[/\\]' AND REVERSE(SPLIT_PART(REVERSE(REPLACE(s.project, '\', '/')), '/', 1)) = ?))`
+		args = append(args, normalizedProject, normalizedProject, normalizedProject)
 	}
 
 	query += " GROUP BY s.id ORDER BY MAX(COALESCE(o.created_at, s.started_at)) DESC LIMIT ?"
@@ -728,8 +732,9 @@ func (s *Store) AllObservations(project, scope string, limit int) ([]Observation
 	args := []any{}
 
 	if project != "" {
-		query += " AND o.project = ?"
-		args = append(args, project)
+		normalizedProject := normalizeProject(project)
+		query += ` AND (o.project = ? OR (o.project LIKE '/%' AND REVERSE(SPLIT_PART(REVERSE(o.project), '/', 1)) = ?) OR (o.project ~ '^[A-Za-z]:[/\\]' AND REVERSE(SPLIT_PART(REVERSE(REPLACE(o.project, '\', '/')), '/', 1)) = ?))`
+		args = append(args, normalizedProject, normalizedProject, normalizedProject)
 	}
 	if scope != "" {
 		query += " AND o.scope = ?"
@@ -773,6 +778,7 @@ func (s *Store) AddObservation(p AddObservationParams) (string, error) {
 	normHash := hashNormalized(content)
 	topicKey := normalizeTopicKey(p.TopicKey)
 	sessionID := normalizeSessionID(p.SessionID)
+	project := normalizeProject(p.Project)
 
 	var observationID string
 	err := s.withTx(func(tx *sql.Tx) error {
@@ -780,7 +786,7 @@ func (s *Store) AddObservation(p AddObservationParams) (string, error) {
 		nowExpr := "CURRENT_TIMESTAMP"
 		orderExpr := "updated_at DESC, created_at DESC"
 		windowClause := "AND created_at >= ?"
-		argsProject := nullableString(p.Project)
+		argsProject := nullableString(project)
 		if topicKey != "" {
 			topicQuery := fmt.Sprintf(`SELECT id::text FROM observations
 				 WHERE topic_key = ?
@@ -872,7 +878,7 @@ func (s *Store) AddObservation(p AddObservationParams) (string, error) {
 			`INSERT INTO observations (id, sync_id, session_id, type, title, content, tool_name, project, scope, topic_key, normalized_hash, revision_count, duplicate_count, last_seen_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 			observationID, syncID, sessionID, p.Type, title, content,
-			nullableString(p.ToolName), nullableString(p.Project), scope, nullableString(topicKey), normHash,
+			nullableString(p.ToolName), nullableString(project), scope, nullableString(topicKey), normHash,
 		); err != nil {
 			return err
 		}
@@ -901,8 +907,9 @@ func (s *Store) RecentObservations(project, scope string, limit int) ([]Observat
 	args := []any{}
 
 	if project != "" {
-		query += " AND o.project = ?"
-		args = append(args, project)
+		normalizedProject := normalizeProject(project)
+		query += ` AND (o.project = ? OR (o.project LIKE '/%' AND REVERSE(SPLIT_PART(REVERSE(o.project), '/', 1)) = ?) OR (o.project ~ '^[A-Za-z]:[/\\]' AND REVERSE(SPLIT_PART(REVERSE(REPLACE(o.project, '\', '/')), '/', 1)) = ?))`
+		args = append(args, normalizedProject, normalizedProject, normalizedProject)
 	}
 	if scope != "" {
 		query += " AND o.scope = ?"
@@ -924,12 +931,13 @@ func (s *Store) AddPrompt(p AddPromptParams) (string, error) {
 	}
 
 	var promptID string
+	project := normalizeProject(p.Project)
 	err := s.withTx(func(tx *sql.Tx) error {
 		syncID := normalizePromptSyncID("")
 		promptID = normalizePromptID("")
 		if _, err := s.execHook(tx,
 			`INSERT INTO user_prompts (id, sync_id, session_id, content, project) VALUES (?, ?, ?, ?, ?)`,
-			promptID, syncID, normalizeSessionID(p.SessionID), content, nullableString(p.Project),
+			promptID, syncID, normalizeSessionID(p.SessionID), content, nullableString(project),
 		); err != nil {
 			return err
 		}
@@ -951,8 +959,9 @@ func (s *Store) RecentPrompts(project string, limit int) ([]Prompt, error) {
 	args := []any{}
 
 	if project != "" {
-		query += " WHERE project = ?"
-		args = append(args, project)
+		normalizedProject := normalizeProject(project)
+		query += ` WHERE (project = ? OR (project LIKE '/%' AND REVERSE(SPLIT_PART(REVERSE(project), '/', 1)) = ?) OR (project ~ '^[A-Za-z]:[/\\]' AND REVERSE(SPLIT_PART(REVERSE(REPLACE(project, '\', '/')), '/', 1)) = ?))`
+		args = append(args, normalizedProject, normalizedProject, normalizedProject)
 	}
 
 	query += " ORDER BY created_at DESC LIMIT ?"
@@ -988,8 +997,9 @@ func (s *Store) SearchPrompts(query string, project string, limit int) ([]Prompt
 	args := []any{"%" + query + "%"}
 
 	if project != "" {
-		sql += " AND p.project = ?"
-		args = append(args, project)
+		normalizedProject := normalizeProject(project)
+		sql += ` AND (p.project = ? OR (p.project LIKE '/%' AND REVERSE(SPLIT_PART(REVERSE(p.project), '/', 1)) = ?) OR (p.project ~ '^[A-Za-z]:[/\\]' AND REVERSE(SPLIT_PART(REVERSE(REPLACE(p.project, '\', '/')), '/', 1)) = ?))`
+		args = append(args, normalizedProject, normalizedProject, normalizedProject)
 	}
 
 	sql += " ORDER BY p.created_at DESC LIMIT ?"
@@ -1277,8 +1287,9 @@ func (s *Store) Search(query string, opts SearchOptions) ([]SearchResult, error)
 	}
 
 	if opts.Project != "" {
-		sql += " AND o.project = ?"
-		args = append(args, opts.Project)
+		normalizedProject := normalizeProject(opts.Project)
+		sql += ` AND (o.project = ? OR (o.project LIKE '/%' AND REVERSE(SPLIT_PART(REVERSE(o.project), '/', 1)) = ?) OR (o.project ~ '^[A-Za-z]:[/\\]' AND REVERSE(SPLIT_PART(REVERSE(REPLACE(o.project, '\', '/')), '/', 1)) = ?))`
+		args = append(args, normalizedProject, normalizedProject, normalizedProject)
 	}
 
 	if opts.Scope != "" {
@@ -1339,6 +1350,7 @@ func (s *Store) Stats() (*Stats, error) {
 // ─── Context Formatting ─────────────────────────────────────────────────────
 
 func (s *Store) FormatContext(project, scope string) (string, error) {
+	project = normalizeProject(project)
 	sessions, err := s.RecentSessions(project, 5)
 	if err != nil {
 		return "", err
@@ -1627,6 +1639,7 @@ func (s *Store) withTx(fn func(tx *sql.Tx) error) error {
 
 func (s *Store) createSessionTx(tx *sql.Tx, id string, params CreateSessionParams) error {
 	id = normalizeSessionID(id)
+	project := normalizeProject(params.Project)
 	var existingIssuer, existingSubject sql.NullString
 	if err := s.queryRowHook(tx, `SELECT auth_issuer, auth_subject FROM sessions WHERE id = ?`, id).Scan(&existingIssuer, &existingSubject); err != nil && err != sql.ErrNoRows {
 		return err
@@ -1651,7 +1664,7 @@ func (s *Store) createSessionTx(tx *sql.Tx, id string, params CreateSessionParam
 		   auth_email = CASE WHEN excluded.auth_email IS NOT NULL AND excluded.auth_email != '' THEN excluded.auth_email ELSE sessions.auth_email END`,
 		id,
 		strings.TrimSpace(params.ClientSessionID),
-		params.Project,
+		project,
 		params.Directory,
 		nullableString(newIssuer),
 		nullableString(newSubject),
@@ -2148,4 +2161,111 @@ func ClassifyTool(toolName string) string {
 // Now returns the current time in the store timestamp format.
 func Now() string {
 	return time.Now().UTC().Format("2006-01-02 15:04:05")
+}
+
+// NormalizeRemoteURL transforms a raw git remote origin URL into a normalized
+// project identifier of the form "host/owner/repo".
+//
+// Supported formats:
+//   - HTTPS:  https://github.com/owner/repo.git  → github.com/owner/repo
+//   - HTTP:   http://github.com/owner/repo        → github.com/owner/repo
+//   - SSH:    git@github.com:owner/repo.git       → github.com/owner/repo
+//   - Credentials: https://user:token@github.com/owner/repo.git → github.com/owner/repo
+//
+// Returns "" if the URL cannot be parsed or does not match any known format.
+func NormalizeRemoteURL(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+
+	// SSH format: git@host:owner/repo.git
+	if strings.HasPrefix(rawURL, "git@") {
+		// Match git@host:path
+		rest := rawURL[4:] // strip "git@"
+		colonIdx := strings.Index(rest, ":")
+		if colonIdx < 0 {
+			return ""
+		}
+		host := rest[:colonIdx]
+		path := rest[colonIdx+1:]
+		path = strings.TrimSuffix(path, ".git")
+		if host == "" || path == "" {
+			return ""
+		}
+		return host + "/" + path
+	}
+
+	// HTTP/HTTPS format
+	if strings.Contains(rawURL, "://") {
+		u, err := url.Parse(rawURL)
+		if err != nil || u.Host == "" {
+			return ""
+		}
+		// Strip credentials
+		host := u.Hostname()
+		path := strings.TrimPrefix(u.Path, "/")
+		path = strings.TrimSuffix(path, ".git")
+		if host == "" || path == "" {
+			return ""
+		}
+		return host + "/" + path
+	}
+
+	return ""
+}
+
+// normalizeProject normalizes a project value received by the Store.
+// Priority rules (in order):
+//  1. Empty or whitespace-only → "unknown"
+//  2. Contains "://" or starts with "git@" → NormalizeRemoteURL (raw URL passed by agent)
+//  3. Already-normalized identifier (host/owner/repo format): does NOT start with "/" or
+//     Windows drive letter, does NOT contain "\", has ≥2 "/" segments → preserve as-is
+//  4. Contains "/" or "\" → filepath.Base() (OS absolute path fallback)
+//  5. Otherwise → value unchanged
+func normalizeProject(v string) string {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return "unknown"
+	}
+
+	// Rule 2: raw URL passed by agent
+	if strings.Contains(v, "://") || strings.HasPrefix(v, "git@") {
+		normalized := NormalizeRemoteURL(v)
+		if normalized == "" {
+			return "unknown"
+		}
+		return normalized
+	}
+
+	// Rule 3: already-normalized identifier like "github.com/owner/repo"
+	// Heuristic: does not start with "/" or Windows drive (e.g. "C:\"),
+	// does not contain "\", and has at least 2 "/" segments.
+	if !strings.HasPrefix(v, "/") &&
+		!isWindowsDrivePath(v) &&
+		!strings.Contains(v, "\\") &&
+		strings.Count(v, "/") >= 2 {
+		return v
+	}
+
+	// Rule 4: OS absolute path → basename
+	if strings.Contains(v, "/") || strings.Contains(v, "\\") {
+		base := filepath.Base(v)
+		if base == "" || base == "." || base == "/" || base == "\\" {
+			return "unknown"
+		}
+		return base
+	}
+
+	// Rule 5: simple name, no separators
+	return v
+}
+
+// isWindowsDrivePath returns true for paths like "C:\..." or "C:/..."
+func isWindowsDrivePath(v string) bool {
+	if len(v) >= 3 && v[1] == ':' && (v[2] == '\\' || v[2] == '/') {
+		c := v[0]
+		return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+	}
+	return false
 }

@@ -284,6 +284,30 @@ For local development on the same machine as the agent, `http://127.0.0.1:7437/m
 
 ---
 
+## Project Identifier
+
+When configuring your agent's memory protocol, the `project` parameter must be a **normalized identifier** derived from the git remote origin — not a local file path.
+
+**Correct** ✅:
+```
+project: "github.com/vertigo7x/postgram"
+project: "gitlab.com/org/my-app"
+```
+
+**Incorrect** ❌:
+```
+project: "/home/alice/projects/postgram"
+project: "C:\Users\bob\projects\postgram"
+project: "https://github.com/vertigo7x/postgram.git"
+```
+
+**How to derive the project identifier**:
+1. Run `git remote get-url origin` in the working directory
+2. Normalize the URL: strip `https://`, `http://`, `git@`, colon separator, and `.git` suffix
+3. If no git remote exists, use the directory basename and set `scope: personal`
+
+Add this to your agent's memory instructions so it derives the correct project identifier automatically at session start.
+
 ## Surviving Compaction (Recommended)
 
 When your agent compacts (summarizes long conversations to free context), it starts fresh — and might forget about Postgram. To make memory truly resilient, add this to your agent's system prompt or config file:

@@ -55,3 +55,41 @@ After compaction:
 1. Save summary first.
 2. Recover context.
 3. Continue work.
+
+---
+
+## Project Identifier
+
+The `project` parameter must be a **normalized identifier**, not a local file path.
+
+### Detection priority (in order)
+
+1. **Git remote origin** (recommended — universal across machines and users):
+   ```bash
+   git remote get-url origin
+   ```
+   Then normalize the URL:
+   - `https://github.com/owner/repo.git` → `github.com/owner/repo`
+   - `git@github.com:owner/repo.git` → `github.com/owner/repo`
+   - Strip: `https://`, `http://`, `git@`, colon separator, `.git` suffix
+
+2. **Directory basename fallback** (when no git remote exists):
+   - Use the last segment of the working directory path
+   - `/home/alice/projects/my-app` → `my-app`
+   - `C:\Users\bob\projects\my-app` → `my-app`
+   - **Set scope to `personal`** — a project without git is local and not shared
+
+### Transformation table
+
+| Input | Output | Scope |
+|-------|--------|-------|
+| `https://github.com/owner/repo.git` | `github.com/owner/repo` | `project` |
+| `git@github.com:owner/repo.git` | `github.com/owner/repo` | `project` |
+| `/home/alice/projects/my-app` (no git) | `my-app` | `personal` |
+| `C:\Users\bob\projects\my-app` (no git) | `my-app` | `personal` |
+
+### Never use
+
+- Absolute paths: `/home/alice/projects/my-app` ❌
+- Windows paths: `C:\Users\bob\projects\my-app` ❌
+- Raw git URLs: `https://github.com/owner/repo.git` ❌

@@ -2452,3 +2452,166 @@ func TestMigrateProjectIdempotent(t *testing.T) {
 		t.Fatal("second migration should be a no-op")
 	}
 }
+
+// ─── Project Normalization Integration Tests ─────────────────────────────────
+
+func TestNormalizeProjectOnWrite_UnixAbsolutePath(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "test-session-unix", Project: "/home/alice/projects/mi-app", Directory: "/home/alice/projects/mi-app"}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	_, err := s.AddObservation(AddObservationParams{
+		SessionID: "test-session-unix",
+		Type:      "decision",
+		Title:     "Unix path test",
+		Content:   "Testing unix absolute path normalization",
+		Project:   "/home/alice/projects/mi-app",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	// Query with normalized name — should find the observation
+	obs, err := s.RecentObservations("mi-app", "", 10)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	if len(obs) == 0 {
+		t.Fatal("expected to find observation stored with unix path, got none")
+	}
+	if obs[0].Project == nil || *obs[0].Project != "mi-app" {
+		t.Errorf("expected stored project to be 'mi-app', got %v", obs[0].Project)
+	}
+}
+
+func TestNormalizeProjectOnWrite_WindowsAbsolutePath(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "test-session-windows", Project: `C:\Users\bob\projects\mi-app`, Directory: `C:\Users\bob\projects\mi-app`}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	_, err := s.AddObservation(AddObservationParams{
+		SessionID: "test-session-windows",
+		Type:      "decision",
+		Title:     "Windows path test",
+		Content:   "Testing windows absolute path normalization",
+		Project:   `C:\Users\bob\projects\mi-app`,
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	obs, err := s.RecentObservations("mi-app", "", 10)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	if len(obs) == 0 {
+		t.Fatal("expected to find observation stored with windows path, got none")
+	}
+	if obs[0].Project == nil || *obs[0].Project != "mi-app" {
+		t.Errorf("expected stored project to be 'mi-app', got %v", obs[0].Project)
+	}
+}
+
+func TestNormalizeProjectOnWrite_AlreadyNormalized(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "test-session-normalized", Project: "github.com/owner/repo", Directory: "/tmp/repo"}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	_, err := s.AddObservation(AddObservationParams{
+		SessionID: "test-session-normalized",
+		Type:      "decision",
+		Title:     "Already normalized test",
+		Content:   "Testing already normalized project identifier",
+		Project:   "github.com/owner/repo",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	obs, err := s.RecentObservations("github.com/owner/repo", "", 10)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	if len(obs) == 0 {
+		t.Fatal("expected to find observation with normalized project, got none")
+	}
+	if obs[0].Project == nil || *obs[0].Project != "github.com/owner/repo" {
+		t.Errorf("expected stored project to be 'github.com/owner/repo', got %v", obs[0].Project)
+	}
+}
+
+func TestNormalizeProjectOnWrite_EmptyProject(t *testing.T) {
+	s := newTestStore(t)
+
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "test-session-empty", Project: "", Directory: "/tmp/empty"}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	_, err := s.AddObservation(AddObservationParams{
+		SessionID: "test-session-empty",
+		Type:      "decision",
+		Title:     "Empty project test",
+		Content:   "Testing empty project normalization",
+		Project:   "",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	obs, err := s.RecentObservations("unknown", "", 10)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	if len(obs) == 0 {
+		t.Fatal("expected to find observation with 'unknown' project, got none")
+	}
+	if obs[0].Project == nil || *obs[0].Project != "unknown" {
+		t.Errorf("expected stored project to be 'unknown', got %v", obs[0].Project)
+	}
+}
+
+func TestNormalizeProjectOnWrite_NormalizedIdentifierNotTruncated(t *testing.T) {
+	// Regression: github.com/owner/repo contains "/" but must NOT be truncated to "repo"
+	s := newTestStore(t)
+
+	if err := s.CreateSession(CreateSessionParams{ClientSessionID: "test-session-no-truncate", Project: "github.com/vertigo7x/postgram", Directory: "/tmp/postgram"}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+
+	_, err := s.AddObservation(AddObservationParams{
+		SessionID: "test-session-no-truncate",
+		Type:      "decision",
+		Title:     "No truncation test",
+		Content:   "Testing that normalized identifiers are not truncated",
+		Project:   "github.com/vertigo7x/postgram",
+	})
+	if err != nil {
+		t.Fatalf("AddObservation: %v", err)
+	}
+
+	// Query with "postgram" (basename) should NOT return this observation
+	obs, err := s.RecentObservations("postgram", "", 10)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	for _, o := range obs {
+		if o.Project != nil && *o.Project == "github.com/vertigo7x/postgram" {
+			t.Error("observation with normalized project 'github.com/vertigo7x/postgram' should NOT be returned when querying by basename 'postgram'")
+		}
+	}
+
+	// Query with full normalized name SHOULD return it
+	obs2, err := s.RecentObservations("github.com/vertigo7x/postgram", "", 10)
+	if err != nil {
+		t.Fatalf("RecentObservations: %v", err)
+	}
+	if len(obs2) == 0 {
+		t.Fatal("expected to find observation with full normalized project name, got none")
+	}
+}
