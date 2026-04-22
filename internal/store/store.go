@@ -1350,7 +1350,10 @@ func (s *Store) Stats() (*Stats, error) {
 // ─── Context Formatting ─────────────────────────────────────────────────────
 
 func (s *Store) FormatContext(project, scope string) (string, error) {
-	project = normalizeProject(project)
+	project = strings.TrimSpace(project)
+	if project != "" {
+		project = normalizeProject(project)
+	}
 	sessions, err := s.RecentSessions(project, 5)
 	if err != nil {
 		return "", err
@@ -1639,7 +1642,10 @@ func (s *Store) withTx(fn func(tx *sql.Tx) error) error {
 
 func (s *Store) createSessionTx(tx *sql.Tx, id string, params CreateSessionParams) error {
 	id = normalizeSessionID(id)
-	project := normalizeProject(params.Project)
+	project := strings.TrimSpace(params.Project)
+	if project != "" {
+		project = normalizeProject(project)
+	}
 	var existingIssuer, existingSubject sql.NullString
 	if err := s.queryRowHook(tx, `SELECT auth_issuer, auth_subject FROM sessions WHERE id = ?`, id).Scan(&existingIssuer, &existingSubject); err != nil && err != sql.ErrNoRows {
 		return err
@@ -2250,7 +2256,7 @@ func normalizeProject(v string) string {
 
 	// Rule 4: OS absolute path → basename
 	if strings.Contains(v, "/") || strings.Contains(v, "\\") {
-		base := filepath.Base(v)
+		base := filepath.Base(strings.ReplaceAll(v, "\\", "/"))
 		if base == "" || base == "." || base == "/" || base == "\\" {
 			return "unknown"
 		}
