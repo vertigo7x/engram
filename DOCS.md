@@ -171,7 +171,7 @@ Published OCI chart: `oci://ghcr.io/vertigo7x/charts/postgram`
 helm registry login ghcr.io
 
 helm install postgram oci://ghcr.io/vertigo7x/charts/postgram \
-  --version 0.1.2 \
+  --version 0.1.4 \
   --set database.url="postgres://user:pass@postgres:5432/postgram?sslmode=disable"
 
 helm install postgram ./charts/postgram \
@@ -208,7 +208,7 @@ kubectl create secret generic postgram-db \
   -n postgram
 
 helm upgrade --install postgram oci://ghcr.io/vertigo7x/charts/postgram -n postgram \
-  --version 0.1.2 \
+  --version 0.1.4 \
   --set database.existingSecret=postgram-db \
   --set database.urlSecretKey=POSTGRAM_DATABASE_URL
 

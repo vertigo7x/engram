@@ -56,7 +56,7 @@ Current install/runtime paths → build from this repository or run the Docker i
 Helm chart installs are also available from GitHub Container Registry:
 
 ```bash
-helm install postgram oci://ghcr.io/vertigo7x/charts/postgram --version 0.1.2
+helm install postgram oci://ghcr.io/vertigo7x/charts/postgram --version 0.1.4
 ```
 
 ### 2. Start Postgram

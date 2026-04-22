@@ -52,7 +52,7 @@ Published chart in GitHub Container Registry:
 helm registry login ghcr.io
 
 helm install postgram oci://ghcr.io/vertigo7x/charts/postgram \
-  --version 0.1.2 \
+  --version 0.1.4 \
   --set database.url='postgres://user:pass@host:5432/postgram?sslmode=disable'
 ```
 
